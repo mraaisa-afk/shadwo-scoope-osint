@@ -166,7 +166,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install mypy types-PyYAML types-aiohttp types-requests types-cryptography
+          pip install mypy types-PyYAML types-requests types-cryptography
       
       - name: Run mypy
         run: mypy shadowscope/ --output=mypy-results.txt --show-error-codes

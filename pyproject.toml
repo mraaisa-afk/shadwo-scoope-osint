@@ -110,7 +110,6 @@ dev = [
     "mypy>=1.6.0",
     "ruff>=0.1.6",
     "types-PyYAML>=6.0.12",
-    "types-aiohttp>=0.1.0",
     "types-requests>=2.31.0",
     "types-cryptography>=3.3.23",
 ]
@@ -130,22 +129,9 @@ include = ["shadowscope*"]
 exclude = ["tests*", "docs*", "examples*", "*__pycache__*"]
 
 [tool.setuptools.package-data]
-""" = ["*.json", "*.yaml", "*.yml", "*.txt"]
+"*" = ["*.json", "*.yaml", "*.yml", "*.txt"]
 
 [tool.ruff]
-# Enable Pyflakes (`F`), pycodestyle (`E`, `W`), and isort (`I`) by default.
-# See: https://github.com/astral-sh/ruff
-select = ["E", "F", "I", "W", "UP"]
-ignore = [
-    "E501",  # Line too long
-    "E731",  # Do not assign a lambda expression
-    "W503",  # Line break before binary operator
-]
-
-# Allow autofix for all enabled rules (when `--fix`) is provided.
-fixable = ["ALL"]
-unfixable = []
-
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -173,6 +159,19 @@ exclude = [
 
 # Same as Black.
 line-length = 100
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`), pycodestyle (`E`, `W`), and isort (`I`) by default.
+# See: https://github.com/astral-sh/ruff
+select = ["E", "F", "I", "W", "UP"]
+ignore = [
+    "E501",  # Line too long
+    "E731",  # Do not assign a lambda expression
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
 
 [tool.ruff.format]
 # Like Black, use 4 spaces per indentation level.

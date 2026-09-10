@@ -8,6 +8,7 @@ import re
 import json
 import random
 import asyncio
+import subprocess
 import aiohttp
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -595,16 +596,16 @@ class CAPTCHAManager:
         self.config = config or global_config
         self._providers = {
             "2captcha": {
-                "api_key": self.config.api.get("2captcha", {}).get("api_key"),
-                "enabled": self.config.api.get("2captcha", {}).get("enabled", False)
+                "api_key": getattr(self.config.api, 'captcha_2captcha', {}).get("api_key", ""),
+                "enabled": getattr(self.config.api, 'captcha_2captcha', {}).get("enabled", False)
             },
             "anti_captcha": {
-                "api_key": self.config.api.get("anti_captcha", {}).get("api_key"),
-                "enabled": self.config.api.get("anti_captcha", {}).get("enabled", False)
+                "api_key": getattr(self.config.api, 'captcha_anti_captcha', {}).get("api_key", ""),
+                "enabled": getattr(self.config.api, 'captcha_anti_captcha', {}).get("enabled", False)
             },
             "deathbycaptcha": {
-                "api_key": self.config.api.get("deathbycaptcha", {}).get("api_key"),
-                "enabled": self.config.api.get("deathbycaptcha", {}).get("enabled", False)
+                "api_key": getattr(self.config.api, 'captcha_deathbycaptcha', {}).get("api_key", ""),
+                "enabled": getattr(self.config.api, 'captcha_deathbycaptcha', {}).get("enabled", False)
             }
         }
     

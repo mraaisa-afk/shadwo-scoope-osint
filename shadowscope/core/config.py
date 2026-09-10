@@ -165,7 +165,14 @@ class Config:
             if config_data:
                 for section in ['api', 'proxy', 'sandbox', 'storage', 'logging', 'performance']:
                     if section in config_data:
-                        setattr(self, section, **config_data[section])
+                        section_config = getattr(self, section, None)
+                        if section_config is not None and hasattr(section_config, '__dataclass_fields__'):
+                            # Update dataclass fields
+                            for key, value in config_data[section].items():
+                                if hasattr(section_config, key):
+                                    setattr(section_config, key, value)
+                        elif isinstance(section_config, dict):
+                            section_config.update(config_data[section])
         except Exception as e:
             console.print(f"[red]Error loading config: {e}[/red]")
             self._create_default_config()
@@ -235,8 +242,13 @@ class Config:
             with open(key_path, 'rb') as f:
                 self._encryption_key = f.read()
         else:
-            # Generate new key from passphrase
-            passphrase = getpass.getpass("Enter encryption passphrase (leave empty to generate random): ")
+            # In non-interactive environments (CI, scripts), auto-generate a random key
+            import sys
+            if sys.stdin.isatty():
+                passphrase = getpass.getpass("Enter encryption passphrase (leave empty to generate random): ")
+            else:
+                passphrase = ""
+            
             if not passphrase:
                 self._encryption_key = Fernet.generate_key()
             else:

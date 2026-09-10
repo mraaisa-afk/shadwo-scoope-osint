@@ -302,15 +302,16 @@ class TargetManager:
     
     def update(self, target: Union[str, Target], **kwargs) -> bool:
         """Update target properties"""
+        # Resolve the target object without holding the lock (get() uses the lock internally)
+        if isinstance(target, str):
+            target_obj = self.get(target)
+        else:
+            target_obj = target
+        
+        if not target_obj:
+            return False
+        
         with self._lock:
-            if isinstance(target, str):
-                target_obj = self.get(target)
-            else:
-                target_obj = target
-            
-            if not target_obj:
-                return False
-            
             # Update fields
             for key, value in kwargs.items():
                 if hasattr(target_obj, key):
