@@ -1,0 +1,295 @@
+/* SHADOWSCOPE TUI Styles */
+
+/* Main App */
+App {
+    layout: grid;
+    grid-size: 1;
+}
+
+/* Header */
+Header {
+    dock: top;
+    height: 3;
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+
+/* Footer */
+Footer {
+    dock: bottom;
+    height: 1;
+    background: $boost;
+    color: $text-muted;
+}
+
+/* Main Container */
+#main-container {
+    height: 1fr;
+    layout: vertical;
+}
+
+/* Tabbed Content */
+TabbedContent {
+    height: 1fr;
+    layout: vertical;
+}
+
+TabbedContent > TabPane {
+    height: 1fr;
+}
+
+/* Tabs */
+Tab {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+
+Tab:hover {
+    background: $accent;
+}
+
+Tab:active {
+    background: $primary;
+    color: $text-inverse;
+}
+
+/* Scrollable Container */
+ScrollableContainer {
+    height: 1fr;
+    layout: vertical;
+    border: tall $background;
+}
+
+/* Data Tables */
+DataTable {
+    height: 1fr;
+    width: 100%;
+}
+
+DataTable > DataTableHeader {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+    border-bottom: heavy $primary;
+}
+
+DataTable > DataTableRow {
+    border-bottom: thin $background;
+}
+
+DataTable > DataTableRow:hover {
+    background: $boost;
+}
+
+DataTable > DataTableRow:focus {
+    background: $accent;
+}
+
+DataTable > DataTableCell {
+    padding: 1 2;
+    text-style: normal;
+}
+
+/* Buttons */
+Button {
+    width: auto;
+    padding: 0 2;
+    margin: 0 1 1 0;
+    border: rounded $primary;
+}
+
+Button:primary {
+    background: $primary;
+    color: $text-inverse;
+    border: rounded $primary-light;
+}
+
+Button:primary:hover {
+    background: $primary-light;
+}
+
+Button:success {
+    background: $success;
+    color: $text-inverse;
+    border: rounded $success-light;
+}
+
+Button:error {
+    background: $error;
+    color: $text-inverse;
+    border: rounded $error-light;
+}
+
+Button:warning {
+    background: $warning;
+    color: $text-inverse;
+}
+
+/* Labels */
+Label {
+    margin: 1 0;
+    text-style: normal;
+}
+
+#scope-title, #results-title, #modules-title, #logs-title, #dashboard-title {
+    text-style: bold;
+    color: $primary;
+    margin: 1 0;
+}
+
+/* Input Fields */
+Input {
+    width: 100%;
+    margin: 0 0 1 0;
+    border: rounded $primary;
+    background: $surface;
+    color: $text;
+}
+
+Input:focus {
+    border: rounded $primary-light;
+}
+
+/* RichLog */
+RichLog {
+    height: 1fr;
+    width: 100%;
+    background: $surface;
+    border: rounded $background;
+    padding: 1;
+    overflow-y: scroll;
+}
+
+/* Grid Layout */
+Grid {
+    height: 1fr;
+    layout: grid;
+    grid-columns: 3;
+    grid-rows: 2;
+}
+
+#stats-container {
+    grid-column: 1;
+    grid-row: 1;
+    border: right $background;
+    padding: 1;
+}
+
+#actions-container {
+    grid-column: 2;
+    grid-row: 1;
+    border: right $background;
+    padding: 1;
+}
+
+#activity-container {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    padding: 1;
+}
+
+/* Container */
+Container {
+    padding: 1;
+}
+
+#stats-container > Label {
+    margin: 1 0;
+    text-align: center;
+}
+
+#actions-container > Button {
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
+/* Modal Screens */
+ModalScreen {
+    background: $surface;
+    border: rounded $primary;
+    padding: 2;
+    width: 60%;
+    height: auto;
+    max-height: 80%;
+}
+
+ModalScreen > Label {
+    text-style: bold;
+    color: $primary;
+    margin: 0 0 1 0;
+}
+
+ModalScreen > Input {
+    margin: 0 0 1 0;
+}
+
+ModalScreen > Button {
+    margin: 1 1 0 0;
+}
+
+/* Dashboard */
+#dashboard-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    margin: 0 0 2 0;
+}
+
+/* Status Colors */
+[status="success"] {
+    color: $success;
+}
+
+[status="error"] {
+    color: $error;
+}
+
+[status="warning"] {
+    color: $warning;
+}
+
+[status="info"] {
+    color: $info;
+}
+
+/* Custom Styles */
+#target-table {
+    height: 1fr;
+}
+
+#results-table {
+    height: 1fr;
+}
+
+#modules-table {
+    height: 1fr;
+}
+
+#log-view {
+    height: 1fr;
+    background: $surface;
+}
+
+/* Responsive */
+@media (max-width: 80) {
+    Grid {
+        grid-columns: 1;
+    }
+    
+    #stats-container {
+        grid-column: 1;
+        grid-row: 1;
+    }
+    
+    #actions-container {
+        grid-column: 1;
+        grid-row: 2;
+    }
+    
+    #activity-container {
+        grid-column: 1;
+        grid-row: 3;
+    }
+}

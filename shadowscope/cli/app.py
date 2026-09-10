@@ -88,11 +88,30 @@ from .commands import (
     module_commands,
     scope_commands,
     config_commands,
-    storage_commands,
-    proxy_commands,
-    sandbox_commands,
-    tui_commands
+    storage_commands
 )
+
+# Try to import optional command groups
+try:
+    from .commands import proxy_commands
+    HAS_PROXY = True
+except ImportError:
+    HAS_PROXY = False
+    proxy_commands = None
+
+try:
+    from .commands import sandbox_commands
+    HAS_SANDBOX = True
+except ImportError:
+    HAS_SANDBOX = False
+    sandbox_commands = None
+
+try:
+    from .commands import tui_commands
+    HAS_TUI = True
+except ImportError:
+    HAS_TUI = False
+    tui_commands = None
 
 # Register command groups
 app.add_typer(target_commands.app, name="target", help="Target management commands")
@@ -100,9 +119,15 @@ app.add_typer(module_commands.app, name="module", help="Module management comman
 app.add_typer(scope_commands.app, name="scope", help="Scope management commands")
 app.add_typer(config_commands.app, name="config", help="Configuration commands")
 app.add_typer(storage_commands.app, name="storage", help="Storage and database commands")
-app.add_typer(proxy_commands.app, name="proxy", help="Proxy and anonymity commands")
-app.add_typer(sandbox_commands.app, name="sandbox", help="Sandbox management commands")
-app.add_typer(tui_commands.app, name="tui", help="Text-based user interface")
+
+if HAS_PROXY:
+    app.add_typer(proxy_commands.app, name="proxy", help="Proxy and anonymity commands")
+
+if HAS_SANDBOX:
+    app.add_typer(sandbox_commands.app, name="sandbox", help="Sandbox management commands")
+
+if HAS_TUI:
+    app.add_typer(tui_commands.app, name="tui", help="Text-based user interface")
 
 
 # Main entry point

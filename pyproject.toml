@@ -1,0 +1,223 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shadowscope"
+version = "1.0.0"
+description = "SHADOWSCOPE - Modular OSINT Framework for Deep Reconnaissance"
+readme = "README.md"
+license = {text = "GPL-3.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "SHADOWSCOPE Team", email = "shadowscope@protonmail.com"}
+]
+keywords = [
+    "osint",
+    "reconnaissance",
+    "security",
+    "intelligence",
+    "framework",
+    "modular",
+    "cli",
+    "tui"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet",
+    "Topic :: Utilities",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: AsyncIO",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pyyaml>=6.0.0",
+    "cryptography>=41.0.0",
+    "rich>=13.7.0",
+    "typer>=0.9.0",
+    "aiohttp>=3.8.6",
+    "dnspython>=2.4.2",
+    "requests>=2.31.0",
+    "docker>=6.1.3",
+    "textual>=0.48.0",
+]
+
+[project.optional-dependencies]
+# Database support
+database = [
+    "psycopg2-binary>=2.9.9",
+    "sqlalchemy>=2.0.23",
+]
+
+# Caching backends
+cache = [
+    "redis>=4.5.5",
+    "diskcache>=5.6.3",
+]
+
+# Proxy and anonymity
+proxy = [
+    "stem>=1.8.1",
+    "pysocks>=1.7.1",
+]
+
+# API clients
+apis = [
+    "shodan>=1.31.0",
+    "censys>=2.2.0",
+]
+
+# File analysis
+files = [
+    "exifread>=3.0.0",
+    "PyPDF2>=3.0.1",
+    "python-magic>=0.4.27",
+    "pypdf>=3.17.0",
+]
+
+# Geolocation
+geo = [
+    "geoip2>=4.6.0",
+    "maxminddb>=2.3.0",
+]
+
+# All optional dependencies
+all = [
+    "shadowscope[database]",
+    "shadowscope[cache]",
+    "shadowscope[proxy]",
+    "shadowscope[apis]",
+    "shadowscope[files]",
+    "shadowscope[geo]",
+]
+
+# Development dependencies
+dev = [
+    "shadowscope[all]",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.6.0",
+    "ruff>=0.1.6",
+    "types-PyYAML>=6.0.12",
+    "types-aiohttp>=0.1.0",
+    "types-requests>=2.31.0",
+    "types-cryptography>=3.3.23",
+]
+
+[project.scripts]
+shadowscope = "shadowscope.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/mraaisa-afk/shadwo-scoope-osint"
+Documentation = "https://github.com/mraaisa-afk/shadwo-scoope-osint#readme"
+Repository = "https://github.com/mraaisa-afk/shadwo-scoope-osint.git"
+Issues = "https://github.com/mraaisa-afk/shadwo-scoope-osint/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shadowscope*"]
+exclude = ["tests*", "docs*", "examples*", "*__pycache__*"]
+
+[tool.setuptools.package-data]
+""" = ["*.json", "*.yaml", "*.yml", "*.txt"]
+
+[tool.ruff]
+# Enable Pyflakes (`F`), pycodestyle (`E`, `W`), and isort (`I`) by default.
+# See: https://github.com/astral-sh/ruff
+select = ["E", "F", "I", "W", "UP"]
+ignore = [
+    "E501",  # Line too long
+    "E731",  # Do not assign a lambda expression
+    "W503",  # Line break before binary operator
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+# Same as Black.
+line-length = 100
+
+[tool.ruff.format]
+# Like Black, use 4 spaces per indentation level.
+indent-style = "space"
+# Like Black, respect magic trailing commas.
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "shadowscope.core.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "shadowscope.modules.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["shadowscope/tests/unit", "shadowscope/tests/integration"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["shadowscope"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

@@ -1,0 +1,298 @@
+name: SHADOWSCOPE CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - '.github/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.dockerignore'
+  
+  # Run weekly to check for dependency updates
+  schedule:
+    - cron: '0 0 * * 1'  # Every Monday at midnight
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run tests'
+        required: false
+        default: 'true'
+      run_linting:
+        description: 'Run linting'
+        required: false
+        default: 'true'
+      run_type_check:
+        description: 'Run type checking'
+        required: false
+        default: 'true'
+
+# Cancel previous runs if new commits are pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  POETRY_VERSION: '1.7.0'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_tests != 'false' }}
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: shadowscope
+          POSTGRES_PASSWORD: shadowscope
+          POSTGRES_DB: shadowscope_test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+      
+      - name: Install optional dependencies
+        run: |
+          pip install psycopg2-binary redis diskcache
+      
+      - name: Run unit tests
+        run: |
+          pytest shadowscope/tests/unit/ -v --tb=short --cov=shadowscope --cov-report=xml --cov-report=html
+        env:
+          SHADOWSCOPE_TEST_MODE: 'true'
+          POSTGRES_DSN: 'postgresql://shadowscope:shadowscope@localhost:5432/shadowscope_test'
+          REDIS_URL: 'redis://localhost:6379/0'
+      
+      - name: Run integration tests
+        run: |
+          pytest shadowscope/tests/integration/ -v --tb=short
+        env:
+          SHADOWSCOPE_TEST_MODE: 'true'
+          POSTGRES_DSN: 'postgresql://shadowscope:shadowscope@localhost:5432/shadowscope_test'
+          REDIS_URL: 'redis://localhost:6379/0'
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        if: always()
+
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_linting != 'false' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install ruff
+        run: pip install ruff
+      
+      - name: Run ruff
+        run: ruff check shadowscope/ --output-file=ruff-results.json
+        continue-on-error: true
+      
+      - name: Upload ruff results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-results
+          path: ruff-results.json
+        if: always()
+
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_type_check != 'false' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy types-PyYAML types-aiohttp types-requests types-cryptography
+      
+      - name: Run mypy
+        run: mypy shadowscope/ --output=mypy-results.txt --show-error-codes
+        continue-on-error: true
+      
+      - name: Upload mypy results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mypy-results
+          path: mypy-results.txt
+        if: always()
+
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [test, lint, type-check]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel
+      
+      - name: Build package
+        run: python -m build
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadowscope-dist
+          path: dist/
+          retention-days: 7
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+        if: github.event_name != 'pull_request'
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            shadowscope:latest
+            shadowscope:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=SHADOWSCOPE
+            org.opencontainers.image.description=Modular OSINT Framework for Deep Reconnaissance
+            org.opencontainers.image.version=1.0.0
+            org.opencontainers.image.license=GPL-3.0
+            org.opencontainers.image.authors=SHADOWSCOPE Team
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, docker]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: shadowscope-dist
+          path: dist/
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.0
+          name: SHADOWSCOPE v1.0.0
+          body: |
+            ## What's New
+            
+            - Initial release of SHADOWSCOPE OSINT Framework
+            - Core framework with modular architecture
+            - CLI with rich terminal output
+            - TUI with Textual
+            - Domain recon modules
+            - Proxy and sandbox support
+            
+            ## Installation
+            
+            ```bash
+            pip install shadowscope
+            ```
+            
+            Or with Docker:
+            
+            ```bash
+            docker pull shadowscope:latest
+            ```
+          files: |
+            dist/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
