@@ -88,6 +88,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov
+          pip install -e .
       
       - name: Install optional dependencies
         run: |
@@ -167,9 +168,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install mypy types-PyYAML types-requests types-cryptography
+          pip install -e .
       
       - name: Run mypy
-        run: mypy shadowscope/ --output=mypy-results.txt --show-error-codes
+        run: mypy shadowscope/ --show-error-codes > mypy-results.txt 2>&1
         continue-on-error: true
       
       - name: Upload mypy results

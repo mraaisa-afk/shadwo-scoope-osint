@@ -148,7 +148,10 @@ class Storage:
         self.config = config or global_config
         self.encryption = EncryptionManager(self.config._encryption_key)
         self._db_path = Path(self.config.storage.path).expanduser()
-        self._lock = threading.Lock()
+        # Re-entrant: import_json() holds this lock while calling add_target(),
+        # add_module() and add_result(), which take it again. A plain Lock
+        # deadlocks on the first imported record.
+        self._lock = threading.RLock()
         self._init_db()
     
     def _init_db(self):
@@ -895,7 +898,6 @@ class Storage:
     
     def backup(self, backup_path: Optional[str] = None) -> str:
         """Create a backup of the database"""
-        import shutil
         from datetime import datetime
         
         backup_dir = Path("~/.shadowscope/backups").expanduser()
@@ -905,7 +907,17 @@ class Storage:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = str(backup_dir / f"shadowscope_backup_{timestamp}.db")
         
-        shutil.copy2(str(self._db_path), backup_path)
+        # Use SQLite's online backup API instead of a plain file copy: the
+        # database runs in WAL mode, so recently committed pages may still
+        # live in the -wal file and would be missing from a raw copy.
+        source = self._get_connection()
+        destination = sqlite3.connect(backup_path)
+        try:
+            with destination:
+                source.backup(destination)
+        finally:
+            destination.close()
+            source.close()
         
         # Encrypt backup if encryption is enabled
         if self.config.storage.encryption.get('enabled', True):
