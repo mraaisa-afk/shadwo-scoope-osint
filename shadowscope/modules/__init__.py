@@ -55,11 +55,23 @@ from .phone import (
     sms_phishing_db,
     voip_tracer,
 )
+from .physical import (
+    geocoder,
+    neighbor_mapper,
+    property_records,
+    satellite_imagery,
+)
 from .social import (
     deleted_content_recovery,
     friend_mapper,
     profile_scraper,
     username_sherlock,
+)
+from .transport import (
+    flight_tracker,
+    license_plate,
+    ship_tracker,
+    vehicle_vin,
 )
 
 __all__ = [
@@ -89,4 +101,10 @@ __all__ = [
 
     # File OSINT modules
     "exif_extractor", "pdf_metadata", "steg_detect", "office_macro_analysis",
+
+    # Physical Intelligence modules
+    "geocoder", "satellite_imagery", "property_records", "neighbor_mapper",
+
+    # Transport Intelligence modules
+    "flight_tracker", "ship_tracker", "vehicle_vin", "license_plate",
 ]

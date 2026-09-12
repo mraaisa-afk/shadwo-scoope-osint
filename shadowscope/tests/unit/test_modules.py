@@ -44,6 +44,10 @@ EXPECTED_MODULES = {
                     "cell_tower_lookup"],
     "file": ["exif_extractor", "pdf_metadata", "steg_detect",
              "office_macro_analysis"],
+    "physical": ["geocoder", "satellite_imagery", "property_records",
+                 "neighbor_mapper"],
+    "transport": ["flight_tracker", "ship_tracker", "vehicle_vin",
+                  "license_plate"],
 }
 
 # Offline validate_target spot checks for the new modules:
@@ -68,6 +72,14 @@ VALIDATE_CASES = [
     ("file", "pdf_metadata", "document.pdf", "   "),
     ("file", "steg_detect", "image.png", ""),
     ("file", "office_macro_analysis", "document.docm", ""),
+    ("physical", "geocoder", "23.8103, 90.4125", ""),
+    ("physical", "satellite_imagery", "23.8103, 90.4125", ""),
+    ("physical", "property_records", "123 Main St, New York, NY", ""),
+    ("physical", "neighbor_mapper", "23.8103, 90.4125", ""),
+    ("transport", "flight_tracker", "AA123", ""),
+    ("transport", "ship_tracker", "9314412", ""),
+    ("transport", "vehicle_vin", "1HGCR2F83HA000000", ""),
+    ("transport", "license_plate", "1ABC123", ""),
 ]
 
 
