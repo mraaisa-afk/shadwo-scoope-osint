@@ -4,16 +4,17 @@ Checks username availability across 500+ platforms.
 """
 
 import asyncio
-import aiohttp
-from typing import Optional, Dict, Any, List
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from rich.console import Console
-import re
+from typing import Any
 
-from shadowscope.core.modules import BaseModule, ModuleResult, ModuleConfig
+import aiohttp
+from rich.console import Console
+
+from shadowscope.core import cache, proxy
+from shadowscope.core.modules import BaseModule, ModuleConfig, ModuleResult
 from shadowscope.core.targets import TargetType
-from shadowscope.core import proxy, cache
 
 console = Console()
 
@@ -21,12 +22,12 @@ console = Console()
 @dataclass
 class UsernameSherlockConfig(ModuleConfig):
     """Configuration for username sherlock module"""
-    api_endpoints: Dict[str, str] = None
+    api_endpoints: dict[str, str] = None
     timeout: float = 60.0
     use_proxy: bool = True
     max_retries: int = 3
     max_concurrent: int = 50
-    platforms: List[str] = field(default_factory=lambda: [
+    platforms: list[str] = field(default_factory=lambda: [
         "github", "twitter", "instagram", "facebook", "linkedin",
         "youtube", "reddit", "tiktok", "snapchat", "pinterest",
         "tumblr", "medium", "vimeo", "dribbble", "behance",
@@ -39,7 +40,7 @@ class UsernameSherlockConfig(ModuleConfig):
         "hackernews", "producthunt", "indiehackers", "dribbble", "behance"
     ])
     check_all_platforms: bool = False
-    
+
     def __post_init__(self):
         if self.api_endpoints is None:
             self.api_endpoints = {
@@ -56,26 +57,26 @@ class UsernameSherlockModule(BaseModule):
     Checks username availability across multiple platforms.
     Uses both direct API checks and web scraping to verify username existence.
     """
-    
+
     MODULE_NAME = "username_sherlock"
     MODULE_VERSION = "1.0.0"
     MODULE_AUTHOR = "SHADOWSCOPE"
     MODULE_CATEGORY = "Social Engineering"
     MODULE_DESCRIPTION = "Username enumeration across 500+ platforms"
     MODULE_TARGET_TYPES = [TargetType.USERNAME, TargetType.EMAIL]
-    
+
     DEFAULT_CONFIG = UsernameSherlockConfig
-    
-    def __init__(self, config: Optional[UsernameSherlockConfig] = None):
+
+    def __init__(self, config: UsernameSherlockConfig | None = None):
         super().__init__(config or UsernameSherlockConfig())
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.platform_urls: Dict[str, str] = {}
-    
+        self.session: aiohttp.ClientSession | None = None
+        self.platform_urls: dict[str, str] = {}
+
     async def initialize(self) -> None:
         """Initialize the module"""
         connector = aiohttp.TCPConnector(ssl=False)
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-        
+
         if self.config.use_proxy and proxy.is_available():
             proxy_url = proxy.get_random_proxy()
             self.session = aiohttp.ClientSession(
@@ -88,15 +89,15 @@ class UsernameSherlockModule(BaseModule):
                 connector=connector,
                 timeout=timeout
             )
-        
+
         # Initialize platform URLs
         self.platform_urls = await self.get_platform_urls()
-    
-    async def get_platform_urls(self) -> Dict[str, str]:
+
+    async def get_platform_urls(self) -> dict[str, str]:
         """Get URLs for all platforms"""
         # This would typically load from a configuration file
         # For now, we'll use a hardcoded list of common platforms
-        
+
         platform_urls = {
             # Social Media
             "twitter": "https://twitter.com/{}",
@@ -109,7 +110,7 @@ class UsernameSherlockModule(BaseModule):
             "tumblr": "https://{}.tumblr.com",
             "reddit": "https://reddit.com/user/{}",
             "medium": "https://medium.com/@{}",
-            
+
             # Professional
             "github": "https://github.com/{}",
             "gitlab": "https://gitlab.com/{}",
@@ -121,14 +122,14 @@ class UsernameSherlockModule(BaseModule):
             "indiehackers": "https://www.indiehackers.com/{}",
             "dribbble": "https://dribbble.com/{}",
             "behance": "https://www.behance.net/{}",
-            
+
             # Creative
             "vimeo": "https://vimeo.com/{}",
             "soundcloud": "https://soundcloud.com/{}",
             "spotify": "https://open.spotify.com/user/{}",
             "youtube": "https://youtube.com/c/{}",
             "twitch": "https://twitch.tv/{}",
-            
+
             # Gaming
             "steam": "https://steamcommunity.com/id/{}",
             "origin": "https://www.origin.com/{}",
@@ -136,13 +137,13 @@ class UsernameSherlockModule(BaseModule):
             "xbox": "https://account.xbox.com/Profile?gamerTag={}",
             "playstation": "https://my.playstation.com/profile/{}",
             "nintendo": "https://accounts.nintendo.com/{}",
-            
+
             # Messaging
             "discord": "https://discordapp.com/users/{}",
             "telegram": "https://t.me/{}",
             "signal": "https://signal.org/#{}",
             "whatsapp": "https://wa.me/{}",
-            
+
             # Finance
             "paypal": "https://paypal.me/{}",
             "venmo": "https://venmo.com/{}",
@@ -154,21 +155,21 @@ class UsernameSherlockModule(BaseModule):
             "bitfinex": "https://bitfinex.com/u/{}",
             "bitstamp": "https://bitstamp.net/u/{}",
             "gemini": "https://gemini.com/u/{}",
-            
+
             # Shopping
             "amazon": "https://amazon.com/gp/profile/{}",
             "ebay": "https://www.ebay.com/usr/{}",
             "etsy": "https://www.etsy.com/shop/{}",
-            
+
             # Tech
             "apple": "https://appleid.apple.com/{}",
             "google": "https://plus.google.com/+{}",
             "microsoft": "https://account.microsoft.com/profile/{}",
         }
-        
+
         return platform_urls
-    
-    async def execute(self, target: str, options: Optional[Dict[str, Any]] = None) -> ModuleResult:
+
+    async def execute(self, target: str, options: dict[str, Any] | None = None) -> ModuleResult:
         """Execute the username sherlock module"""
         result = ModuleResult(
             module=self.MODULE_NAME,
@@ -176,7 +177,7 @@ class UsernameSherlockModule(BaseModule):
             status="started",
             start_time=datetime.utcnow()
         )
-        
+
         try:
             # Validate target
             target_type = self.validate_target(target)
@@ -184,14 +185,14 @@ class UsernameSherlockModule(BaseModule):
                 result.status = "error"
                 result.error = f"Invalid target: {target}"
                 return result
-            
+
             # Extract username
             username = target
             if target_type == TargetType.EMAIL:
                 username = target.split("@")[0]
-            
+
             username = username.strip().lower()
-            
+
             # Check cache
             cache_key = f"username_sherlock:{username}"
             cached = cache.get(cache_key)
@@ -199,20 +200,20 @@ class UsernameSherlockModule(BaseModule):
                 result.status = "cached"
                 result.data = cached
                 return result
-            
+
             # Initialize
             await self.initialize()
-            
+
             # Check username across platforms
             sherlock_data = await self.check_username(username)
-            
+
             # Store in cache
             cache.set(cache_key, sherlock_data, ttl=86400)  # 24 hours
-            
+
             result.status = "success"
             result.data = sherlock_data
             result.end_time = datetime.utcnow()
-            
+
         except Exception as e:
             result.status = "error"
             result.error = str(e)
@@ -220,10 +221,10 @@ class UsernameSherlockModule(BaseModule):
         finally:
             if self.session:
                 await self.session.close()
-        
+
         return result
-    
-    async def check_username(self, username: str) -> Dict[str, Any]:
+
+    async def check_username(self, username: str) -> dict[str, Any]:
         """Check username across platforms"""
         data = {
             "username": username,
@@ -233,16 +234,16 @@ class UsernameSherlockModule(BaseModule):
             "errors": [],
             "analysis": {}
         }
-        
+
         # Get platforms to check
         platforms_to_check = self.config.platforms
         if self.config.check_all_platforms:
             platforms_to_check = list(self.platform_urls.keys())
-        
+
         # Use semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(self.config.max_concurrent)
-        
-        async def check_platform(platform: str) -> Dict[str, Any]:
+
+        async def check_platform(platform: str) -> dict[str, Any]:
             try:
                 result = await self.check_single_platform(platform, username)
                 return result
@@ -252,7 +253,7 @@ class UsernameSherlockModule(BaseModule):
                     "exists": None,
                     "error": str(e)
                 }
-        
+
         # Check platforms concurrently
         tasks = []
         for platform in platforms_to_check:
@@ -260,16 +261,16 @@ class UsernameSherlockModule(BaseModule):
                 semaphore, check_platform, platform
             ))
             tasks.append(task)
-        
+
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks)
-        
+
         # Process results
         for result in results:
             platform = result.get("platform")
             exists = result.get("exists")
             error = result.get("error")
-            
+
             if error:
                 data["errors"].append({
                     "platform": platform,
@@ -284,19 +285,19 @@ class UsernameSherlockModule(BaseModule):
                     "exists": exists,
                     "url": self.platform_urls.get(platform, "").format(username)
                 }
-                
+
                 if exists:
                     data["found"].append(platform)
                 elif exists is False:
                     data["not_found"].append(platform)
-        
+
         # Analyze the data
         data["analysis"] = self.analyze_username_data(data)
-        
+
         return data
-    
+
     async def safe_check_platform(self, semaphore: asyncio.Semaphore,
-                                  check_func, platform: str) -> Dict[str, Any]:
+                                  check_func, platform: str) -> dict[str, Any]:
         """Safely check a platform with semaphore"""
         async with semaphore:
             try:
@@ -307,8 +308,8 @@ class UsernameSherlockModule(BaseModule):
                     "exists": None,
                     "error": str(e)
                 }
-    
-    async def check_single_platform(self, platform: str, username: str) -> Dict[str, Any]:
+
+    async def check_single_platform(self, platform: str, username: str) -> dict[str, Any]:
         """Check if username exists on a single platform"""
         url = self.platform_urls.get(platform)
         if not url:
@@ -317,9 +318,9 @@ class UsernameSherlockModule(BaseModule):
                 "exists": None,
                 "error": "Platform not configured"
             }
-        
+
         url = url.format(username)
-        
+
         try:
             # Check if URL exists
             async with self.session.get(url, allow_redirects=True) as response:
@@ -327,7 +328,7 @@ class UsernameSherlockModule(BaseModule):
                 if response.status == 200:
                     # Check if page contains username or "not found" messages
                     html = await response.text()
-                    
+
                     # Check for common "not found" indicators
                     not_found_indicators = [
                         "not found",
@@ -340,7 +341,7 @@ class UsernameSherlockModule(BaseModule):
                         "error 404",
                         "sorry, this page isn't available",
                     ]
-                    
+
                     for indicator in not_found_indicators:
                         if indicator.lower() in html.lower():
                             return {
@@ -349,7 +350,7 @@ class UsernameSherlockModule(BaseModule):
                                 "url": url,
                                 "status": response.status
                             }
-                    
+
                     # If no not-found indicators, assume exists
                     return {
                         "platform": platform,
@@ -381,7 +382,7 @@ class UsernameSherlockModule(BaseModule):
                         "status": response.status,
                         "error": f"Unexpected status code: {response.status}"
                     }
-                    
+
         except aiohttp.ClientError as e:
             return {
                 "platform": platform,
@@ -389,8 +390,8 @@ class UsernameSherlockModule(BaseModule):
                 "url": url,
                 "error": str(e)
             }
-    
-    def analyze_username_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def analyze_username_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Analyze username data"""
         analysis = {
             "username": data["username"],
@@ -405,14 +406,14 @@ class UsernameSherlockModule(BaseModule):
             "is_available": False,
             "recommendations": []
         }
-        
+
         # Calculate availability percentage
         total_valid = analysis["found_count"] + analysis["not_found_count"]
         if total_valid > 0:
             analysis["availability_percentage"] = (
                 analysis["not_found_count"] / total_valid * 100
             )
-        
+
         # Determine if username is common
         # This would typically compare against a database of common usernames
         common_usernames = [
@@ -424,30 +425,30 @@ class UsernameSherlockModule(BaseModule):
             "jennifer", "lisa", "susan", "patricia", "nancy",
             "karen", "betty", "margaret", "sandra", "ashley",
         ]
-        
+
         if data["username"].lower() in common_usernames:
             analysis["is_common"] = True
-        
+
         # Determine if available
         if analysis["availability_percentage"] > 80:
             analysis["is_available"] = True
-        
+
         # Generate recommendations
         if analysis["found_count"] > 0:
             analysis["recommendations"].append(
                 f"FOUND: Username exists on {analysis['found_count']} platform(s)"
             )
-        
+
         if analysis["not_found_count"] > 0:
             analysis["recommendations"].append(
                 f"AVAILABLE: Username available on {analysis['not_found_count']} platform(s)"
             )
-        
+
         if analysis["is_common"]:
             analysis["recommendations"].append(
                 "COMMON: This is a common username - may have many false positives"
             )
-        
+
         if analysis["is_available"]:
             analysis["recommendations"].append(
                 "AVAILABLE: Username is available on most platforms"
@@ -456,37 +457,36 @@ class UsernameSherlockModule(BaseModule):
             analysis["recommendations"].append(
                 "TAKEN: Username is already taken on most platforms"
             )
-        
+
         if analysis["error_count"] > 0:
             analysis["recommendations"].append(
                 f"ERRORS: {analysis['error_count']} platforms could not be checked"
             )
-        
+
         # Check for specific high-value platforms
         high_value_platforms = ["github", "twitter", "linkedin", "instagram", "facebook"]
         found_high_value = [p for p in analysis["found_platforms"] if p in high_value_platforms]
-        
+
         if found_high_value:
             analysis["recommendations"].append(
                 f"HIGH VALUE: Username found on {len(found_high_value)} high-value platform(s)"
             )
-        
+
         return analysis
-    
-    def validate_target(self, target: str) -> Optional[TargetType]:
+
+    def validate_target(self, target: str) -> TargetType | None:
         """Validate target and return its type"""
-        import re
-        
+
         # Check if it's an email
         email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if re.match(email_pattern, target):
             return TargetType.EMAIL
-        
+
         # Check if it's a username (alphanumeric, underscores, hyphens, dots)
         username_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9._-]{1,30}[a-zA-Z0-9]$"
         if re.match(username_pattern, target):
             return TargetType.USERNAME
-        
+
         return None
 
 

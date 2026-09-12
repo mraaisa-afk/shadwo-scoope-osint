@@ -4,18 +4,18 @@ Scrapes darknet marketplaces for products, vendors, and reviews.
 """
 
 import asyncio
-import aiohttp
-from typing import Optional, Dict, Any, List
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from rich.console import Console
-from bs4 import BeautifulSoup
-import re
-import json
+from typing import Any
 
-from shadowscope.core.modules import BaseModule, ModuleResult, ModuleConfig
+import aiohttp
+from bs4 import BeautifulSoup
+from rich.console import Console
+
+from shadowscope.core import proxy
+from shadowscope.core.modules import BaseModule, ModuleConfig, ModuleResult
 from shadowscope.core.targets import TargetType
-from shadowscope.core import proxy, cache
 
 console = Console()
 
@@ -34,7 +34,7 @@ class MarketplaceScraperConfig(ModuleConfig):
     scrape_reviews: bool = True
     scrape_categories: bool = True
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0"
-    
+
     def __post_init__(self):
         if not self.tor_proxy.startswith("socks"):
             self.tor_proxy = f"socks5://{self.tor_proxy}"
@@ -44,22 +44,22 @@ class MarketplaceScraperConfig(ModuleConfig):
 class ProductInfo:
     """Information about a marketplace product"""
     name: str
-    price: Optional[float] = None
+    price: float | None = None
     currency: str = "BTC"
     description: str = ""
     category: str = ""
     vendor: str = ""
-    rating: Optional[float] = None
+    rating: float | None = None
     num_reviews: int = 0
-    stock: Optional[int] = None
+    stock: int | None = None
     shipping_from: str = ""
-    shipping_to: List[str] = field(default_factory=list)
-    images: List[str] = field(default_factory=list)
-    listed_date: Optional[str] = None
-    last_updated: Optional[str] = None
+    shipping_to: list[str] = field(default_factory=list)
+    images: list[str] = field(default_factory=list)
+    listed_date: str | None = None
+    last_updated: str | None = None
     product_url: str = ""
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "price": self.price,
@@ -84,18 +84,18 @@ class VendorInfo:
     """Information about a marketplace vendor"""
     username: str
     pgp_key: str = ""
-    join_date: Optional[str] = None
-    last_active: Optional[str] = None
+    join_date: str | None = None
+    last_active: str | None = None
     total_sales: int = 0
     total_revenue: float = 0.0
-    rating: Optional[float] = None
+    rating: float | None = None
     num_reviews: int = 0
     num_products: int = 0
     shipping_origin: str = ""
     description: str = ""
     vendor_url: str = ""
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "username": self.username,
             "pgp_key": self.pgp_key,
@@ -121,10 +121,10 @@ class ReviewInfo:
     title: str = ""
     content: str = ""
     reviewer: str = ""
-    date: Optional[str] = None
+    date: str | None = None
     verified_purchase: bool = False
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "product": self.product,
             "vendor": self.vendor,
@@ -144,28 +144,28 @@ class MarketplaceScraperModule(BaseModule):
     Scrapes darknet marketplaces for products, vendors, and reviews.
     Supports Tor and I2P network access.
     """
-    
+
     MODULE_NAME = "marketplace_scraper"
     MODULE_VERSION = "1.0.0"
     MODULE_AUTHOR = "SHADOWSCOPE"
     MODULE_CATEGORY = "Dark Web"
     MODULE_DESCRIPTION = "Darknet marketplace scraping for products, vendors, and reviews"
     MODULE_TARGET_TYPES = [TargetType.ONION, TargetType.URL]
-    
+
     DEFAULT_CONFIG = MarketplaceScraperConfig
-    
-    def __init__(self, config: Optional[MarketplaceScraperConfig] = None):
+
+    def __init__(self, config: MarketplaceScraperConfig | None = None):
         super().__init__(config or MarketplaceScraperConfig())
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.semaphore: Optional[asyncio.Semaphore] = None
+        self.session: aiohttp.ClientSession | None = None
+        self.semaphore: asyncio.Semaphore | None = None
         self.visited_urls: set = set()
-    
+
     async def initialize(self) -> None:
         """Initialize the module"""
         self.semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
-        
+
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-        
+
         if self.config.use_proxy and proxy.is_available():
             proxy_url = proxy.get_random_proxy()
             self.session = aiohttp.ClientSession(
@@ -174,23 +174,23 @@ class MarketplaceScraperModule(BaseModule):
             )
         else:
             self.session = aiohttp.ClientSession(timeout=timeout)
-    
+
     async def cleanup(self) -> None:
         """Clean up resources"""
         if self.session:
             await self.session.close()
         self.visited_urls.clear()
-    
+
     def _is_onion_url(self, url: str) -> bool:
         """Check if URL is an onion address"""
         onion_pattern = r'\.onion(\s*:\d+)?($|/|\?)'
         return bool(re.search(onion_pattern, url, re.IGNORECASE))
-    
+
     def _is_i2p_url(self, url: str) -> bool:
         """Check if URL is an I2P address"""
         i2p_pattern = r'\.i2p(\s*:\d+)?($|/|\?)'
         return bool(re.search(i2p_pattern, url, re.IGNORECASE))
-    
+
     def _get_session_for_url(self, url: str) -> aiohttp.ClientSession:
         """Get appropriate session based on URL type"""
         if self._is_onion_url(url):
@@ -208,12 +208,12 @@ class MarketplaceScraperModule(BaseModule):
                 )
             return self._i2p_session
         return self.session
-    
-    async def _fetch_page(self, url: str) -> Optional[str]:
+
+    async def _fetch_page(self, url: str) -> str | None:
         """Fetch a page with rate limiting and error handling"""
         if url in self.visited_urls:
             return None
-        
+
         async with self.semaphore:
             try:
                 session = self._get_session_for_url(url)
@@ -223,7 +223,7 @@ class MarketplaceScraperModule(BaseModule):
                     "Accept-Language": "en-US,en;q=0.5",
                     "Connection": "keep-alive"
                 }
-                
+
                 async with session.get(url, headers=headers, allow_redirects=True) as response:
                     if response.status == 200:
                         self.visited_urls.add(url)
@@ -236,28 +236,28 @@ class MarketplaceScraperModule(BaseModule):
                         console.print(f"[yellow]Service unavailable: {url}[/yellow]")
                     else:
                         console.print(f"[yellow]HTTP {response.status}: {url}[/yellow]")
-                        
+
             except asyncio.TimeoutError:
                 console.print(f"[red]Timeout fetching: {url}[/red]")
             except aiohttp.ClientError as e:
                 console.print(f"[red]Error fetching {url}: {e}[/red]")
             except Exception as e:
                 console.print(f"[red]Unexpected error fetching {url}: {e}[/red]")
-        
+
         return None
-    
-    async def _extract_product_info(self, soup: BeautifulSoup, url: str) -> Optional[ProductInfo]:
+
+    async def _extract_product_info(self, soup: BeautifulSoup, url: str) -> ProductInfo | None:
         """Extract product information from marketplace page"""
         try:
             product = ProductInfo(product_url=url)
-            
+
             # Extract name
             name_elem = soup.find(class_=re.compile(r'product.*name|title', re.I))
             if name_elem:
                 product.name = name_elem.get_text(strip=True)
             else:
                 product.name = soup.title.string if soup.title else "Unknown Product"
-            
+
             # Extract price
             price_elem = soup.find(class_=re.compile(r'price|cost|amount', re.I))
             if price_elem:
@@ -265,22 +265,22 @@ class MarketplaceScraperModule(BaseModule):
                 price_match = re.search(r'[\d,]+\.?\d*', price_text)
                 if price_match:
                     product.price = float(price_match.group().replace(',', ''))
-            
+
             # Extract currency
             currency_elem = soup.find(class_=re.compile(r'currency|btc|coin', re.I))
             if currency_elem:
                 product.currency = currency_elem.get_text(strip=True).upper()
-            
+
             # Extract description
             desc_elem = soup.find(class_=re.compile(r'description|details|info', re.I))
             if desc_elem:
                 product.description = desc_elem.get_text(strip=True)
-            
+
             # Extract vendor
             vendor_elem = soup.find(class_=re.compile(r'vendor|seller|shop', re.I))
             if vendor_elem:
                 product.vendor = vendor_elem.get_text(strip=True)
-            
+
             # Extract rating
             rating_elem = soup.find(class_=re.compile(r'rating|stars|score', re.I))
             if rating_elem:
@@ -288,38 +288,38 @@ class MarketplaceScraperModule(BaseModule):
                 rating_match = re.search(r'(\d+\.?\d*)', rating_text)
                 if rating_match:
                     product.rating = float(rating_match.group(1))
-            
+
             # Extract category
             category_elem = soup.find(class_=re.compile(r'category|type|class', re.I))
             if category_elem:
                 product.category = category_elem.get_text(strip=True)
-            
+
             return product
-            
+
         except Exception as e:
             console.print(f"[red]Error extracting product info: {e}[/red]")
             return None
-    
-    async def _extract_vendor_info(self, soup: BeautifulSoup, url: str) -> Optional[VendorInfo]:
+
+    async def _extract_vendor_info(self, soup: BeautifulSoup, url: str) -> VendorInfo | None:
         """Extract vendor information from profile page"""
         try:
             vendor = VendorInfo(vendor_url=url)
-            
+
             # Extract username
             username_elem = soup.find(class_=re.compile(r'username|name|vendor.*name', re.I))
             if username_elem:
                 vendor.username = username_elem.get_text(strip=True)
-            
+
             # Extract PGP key
             pgp_elem = soup.find(class_=re.compile(r'pgp|gpg|key', re.I))
             if pgp_elem:
                 vendor.pgp_key = pgp_elem.get_text(strip=True)
-            
+
             # Extract join date
             join_elem = soup.find(class_=re.compile(r'join|member.*since|registered', re.I))
             if join_elem:
                 vendor.join_date = join_elem.get_text(strip=True)
-            
+
             # Extract rating
             rating_elem = soup.find(class_=re.compile(r'rating|trust|score', re.I))
             if rating_elem:
@@ -327,7 +327,7 @@ class MarketplaceScraperModule(BaseModule):
                 rating_match = re.search(r'(\d+\.?\d*)', rating_text)
                 if rating_match:
                     vendor.rating = float(rating_match.group(1))
-            
+
             # Extract sales count
             sales_elem = soup.find(class_=re.compile(r'sales|orders|completed', re.I))
             if sales_elem:
@@ -335,24 +335,24 @@ class MarketplaceScraperModule(BaseModule):
                 sales_match = re.search(r'(\d+)', sales_text)
                 if sales_match:
                     vendor.total_sales = int(sales_match.group(1))
-            
+
             # Extract description
             desc_elem = soup.find(class_=re.compile(r'bio|about|description', re.I))
             if desc_elem:
                 vendor.description = desc_elem.get_text(strip=True)
-            
+
             return vendor
-            
+
         except Exception as e:
             console.print(f"[red]Error extracting vendor info: {e}[/red]")
             return None
-    
-    async def _extract_reviews(self, soup: BeautifulSoup) -> List[ReviewInfo]:
+
+    async def _extract_reviews(self, soup: BeautifulSoup) -> list[ReviewInfo]:
         """Extract reviews from page"""
         reviews = []
         try:
             review_sections = soup.find_all(class_=re.compile(r'review|feedback|rating', re.I))
-            
+
             for section in review_sections:
                 try:
                     review = ReviewInfo(
@@ -365,42 +365,42 @@ class MarketplaceScraperModule(BaseModule):
                     reviews.append(review)
                 except:
                     continue
-                    
+
         except Exception as e:
             console.print(f"[red]Error extracting reviews: {e}[/red]")
-        
+
         return reviews
-    
-    async def _scrape_page(self, url: str, depth: int = 0) -> Dict[str, Any]:
+
+    async def _scrape_page(self, url: str, depth: int = 0) -> dict[str, Any]:
         """Scrape a marketplace page recursively"""
         if depth > self.config.max_depth or len(self.visited_urls) >= self.config.max_pages:
             return {}
-        
+
         html = await self._fetch_page(url)
         if not html:
             return {}
-        
+
         soup = BeautifulSoup(html, 'html.parser')
         results = {}
-        
+
         # Extract products
         if self.config.scrape_products:
             product = await self._extract_product_info(soup, url)
             if product:
                 results['product'] = product.to_dict()
-        
+
         # Extract vendor info
         if self.config.scrape_vendors:
             vendor = await self._extract_vendor_info(soup, url)
             if vendor:
                 results['vendor'] = vendor.to_dict()
-        
+
         # Extract reviews
         if self.config.scrape_reviews:
             reviews = await self._extract_reviews(soup)
             if reviews:
                 results['reviews'] = [r.to_dict() for r in reviews]
-        
+
         # Extract categories
         if self.config.scrape_categories:
             categories = []
@@ -410,7 +410,7 @@ class MarketplaceScraperModule(BaseModule):
                     categories.append(link.get_text(strip=True))
             if categories:
                 results['categories'] = list(set(categories))
-        
+
         # Follow links
         if depth < self.config.max_depth:
             links = []
@@ -421,7 +421,7 @@ class MarketplaceScraperModule(BaseModule):
                 elif href.startswith('/'):
                     from urllib.parse import urljoin
                     links.append(urljoin(url, href))
-            
+
             for link in links[:10]:
                 if link not in self.visited_urls:
                     nested_results = await self._scrape_page(link, depth + 1)
@@ -434,10 +434,10 @@ class MarketplaceScraperModule(BaseModule):
                             if 'vendors' not in results:
                                 results['vendors'] = []
                             results['vendors'].append(nested_results['vendor'])
-        
+
         return results
-    
-    async def execute(self, target: str, options: Optional[Dict[str, Any]] = None) -> ModuleResult:
+
+    async def execute(self, target: str, options: dict[str, Any] | None = None) -> ModuleResult:
         """Execute the marketplace scraper module"""
         result = ModuleResult(
             module=self.MODULE_NAME,
@@ -445,15 +445,15 @@ class MarketplaceScraperModule(BaseModule):
             status="started",
             start_time=datetime.utcnow()
         )
-        
+
         try:
             options = options or {}
             depth = options.get('depth', 0)
-            
+
             console.print(f"[blue]Scraping marketplace: {target}[/blue]")
-            
+
             scrape_result = await self._scrape_page(target, depth)
-            
+
             if scrape_result:
                 result.status = "success"
                 result.data = scrape_result
@@ -461,16 +461,16 @@ class MarketplaceScraperModule(BaseModule):
             else:
                 result.status = "partial"
                 result.error = "No data extracted from marketplace"
-                
+
         except Exception as e:
             result.status = "failed"
             result.error = str(e)
             console.print(f"[red]Error scraping marketplace: {e}[/red]")
-        
+
         result.end_time = datetime.utcnow()
         return result
-    
-    async def execute_batch(self, targets: List[str], options: Optional[Dict[str, Any]] = None) -> List[ModuleResult]:
+
+    async def execute_batch(self, targets: list[str], options: dict[str, Any] | None = None) -> list[ModuleResult]:
         """Execute on multiple targets"""
         results = []
         for target in targets:

@@ -36,6 +36,12 @@ from .file import (
     pdf_metadata,
     steg_detect,
 )
+from .financial import (
+    credit_card_bin,
+    iban_lookup,
+    swift_code,
+    transaction_tracer,
+)
 from .geolocation import (
     cell_tower_lookup,
     gps_tracker,
@@ -54,6 +60,12 @@ from .ip import (
     censys_query,
     port_knocking,
     shodan_scan,
+)
+from .malware import (
+    hybrid_analysis,
+    malware_family_identifier,
+    virus_total,
+    yara_scan,
 )
 from .phone import (
     carrier_lookup,
@@ -125,4 +137,10 @@ __all__ = [
 
     # Threat Intelligence modules
     "threat_fox", "misp_lookup", "abuse_ch", "firehol",
+
+    # Malware Analysis modules
+    "virus_total", "hybrid_analysis", "yara_scan", "malware_family_identifier",
+
+    # Financial Recon modules
+    "credit_card_bin", "iban_lookup", "swift_code", "transaction_tracer",
 ]

@@ -54,6 +54,11 @@ EXPECTED_MODULES = {
             "mqtt_brute"],
     "threat": ["threat_fox", "misp_lookup", "abuse_ch",
                "firehol"],
+    # Batch 4 categories
+    "malware": ["virus_total", "hybrid_analysis", "yara_scan",
+                "malware_family_identifier"],
+    "financial": ["credit_card_bin", "iban_lookup", "swift_code",
+                  "transaction_tracer"],
 }
 
 # Offline validate_target spot checks for modules:
@@ -94,6 +99,14 @@ VALIDATE_CASES = [
     ("threat", "misp_lookup", "example.com", ""),
     ("threat", "abuse_ch", "http://example.com/malware.exe", ""),
     ("threat", "firehol", "1.1.1.1", ""),
+    ("malware", "virus_total", "44d88612fea8a8f36de82e1278abb02f", ""),
+    ("malware", "hybrid_analysis", "44d88612fea8a8f36de82e1278abb02f", ""),
+    ("malware", "yara_scan", "sample.bin", ""),
+    ("malware", "malware_family_identifier", "LockBit", ""),
+    ("financial", "credit_card_bin", "400000", "123"),
+    ("financial", "iban_lookup", "GB33BUKB20201555555555", "12"),
+    ("financial", "swift_code", "CHASUS33", "XYZ"),
+    ("financial", "transaction_tracer", "ch_1N2e3f4g5h6i7j8k9l0m1n2o", ""),
 ]
 
 

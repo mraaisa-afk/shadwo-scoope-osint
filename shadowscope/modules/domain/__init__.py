@@ -2,11 +2,11 @@
 Domain Recon Modules for SHADOWSCOPE
 """
 
+from .cert_transparency import cert_transparency_module
 from .dns_brute import dns_brute_module
-from .whois_historical import whois_historical_module
 from .dnssec_check import dnssec_check_module
 from .subdomain_takeover import subdomain_takeover_module
-from .cert_transparency import cert_transparency_module
+from .whois_historical import whois_historical_module
 
 # Module registry
 MODULES = {
@@ -25,7 +25,7 @@ subdomain_takeover = subdomain_takeover_module
 cert_transparency = cert_transparency_module
 
 __all__ = [
-    "dns_brute", "whois_historical", "dnssec_check", 
+    "dns_brute", "whois_historical", "dnssec_check",
     "subdomain_takeover", "cert_transparency",
     "MODULES"
 ]
