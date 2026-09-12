@@ -41,10 +41,11 @@ textual>=0.48.0
 ratelimit>=2.2.1
 
 # File analysis
-# exifread>=3.0.0
-# PyPDF2>=3.0.1
-# python-magic>=0.4.27
-# pypdf>=3.17.0
+Pillow>=10.0.0
+pypdf>=3.17.0
+olefile>=0.46
+exifread>=3.0.0
+python-magic>=0.4.27
 
 # Cryptography
 # pycryptodome>=3.19.0

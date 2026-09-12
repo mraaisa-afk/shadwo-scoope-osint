@@ -42,6 +42,8 @@ EXPECTED_MODULES = {
                "darknet_ties"],
     "geolocation": ["ip_geolocate", "gps_tracker", "wifi_mapping",
                     "cell_tower_lookup"],
+    "file": ["exif_extractor", "pdf_metadata", "steg_detect",
+             "office_macro_analysis"],
 }
 
 # Offline validate_target spot checks for the new modules:
@@ -62,6 +64,10 @@ VALIDATE_CASES = [
     ("geolocation", "gps_tracker", "23.8103, 90.4125", "hello world"),
     ("geolocation", "wifi_mapping", "00:1A:11:22:33:44", "not-a-bssid"),
     ("geolocation", "cell_tower_lookup", "470-01-1234-56789", "abc"),
+    ("file", "exif_extractor", "sample.jpg", ""),
+    ("file", "pdf_metadata", "document.pdf", "   "),
+    ("file", "steg_detect", "image.png", ""),
+    ("file", "office_macro_analysis", "document.docm", ""),
 ]
 
 
@@ -87,7 +93,9 @@ def test_target_type_enum_values():
     assert TargetType.COORDINATES == "coordinates"
     assert TargetType.BSSID == "bssid"
     assert TargetType.CELL_TOWER == "cell_tower"
+    assert TargetType.FILE == "file"
     assert TargetType("phone") is TargetType.PHONE
+    assert TargetType("file") is TargetType.FILE
 
 
 def test_module_config_dict_roundtrip():
@@ -149,5 +157,27 @@ def test_target_autodetect_new_types():
     assert Target("+8801712345678").target_type == "phone"
     assert Target("23.8103, 90.4125").target_type == "coordinates"
     assert Target("00:1A:11:22:33:44").target_type == "bssid"
+    assert Target("sample.jpg").target_type == "file"
+    assert Target("document.pdf").target_type == "file"
     bc1 = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
     assert Target(bc1).target_type == "bitcoin"
+
+
+@pytest.mark.asyncio
+async def test_auto_registration_and_no_sandbox():
+    manager = ModuleManager()
+    # exif_extractor built-in module
+    metadata = manager.get_module("exif_extractor")
+    assert metadata is not None
+    assert metadata.name == "exif_extractor"
+
+    # Verify auto-registration into storage
+    stored = manager.storage.get_module("exif_extractor")
+    assert stored is not None
+    assert stored.name == "exif_extractor"
+
+    # Test executor execution with no_sandbox flag
+    res = await manager.executor.execute("exif_extractor", "nonexistent.jpg", no_sandbox=True)
+    assert res.status == "failed"
+    assert "File not found" in res.error
+
