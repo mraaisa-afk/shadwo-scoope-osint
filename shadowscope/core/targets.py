@@ -9,12 +9,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 import threading
 
 console = Console()
+
+
+class TargetType(str, Enum):
+    """Canonical target-type identifiers.
+
+    A ``str`` enum so members compare equal to the plain strings stored
+    on :class:`Target` (``TargetType.DOMAIN == "domain"``). Modules
+    declare support via ``MODULE_TARGET_TYPES`` using these members.
+    """
+
+    DOMAIN = "domain"
+    SUBDOMAIN = "subdomain"
+    IP = "ip"
+    IPV6 = "ipv6"
+    URL = "url"
+    EMAIL = "email"
+    PHONE = "phone"
+    USERNAME = "username"
+    ONION = "onion"
+    I2P = "i2p"
+    CRYPTO = "crypto"
+    BITCOIN = "bitcoin"
+    ETHEREUM = "ethereum"
+    LITECOIN = "litecoin"
+    MONERO = "monero"
+    PGP_KEY = "pgp_key"
+    COORDINATES = "coordinates"
+    BSSID = "bssid"
+    CELL_TOWER = "cell_tower"
+    VIN = "vin"
+    LICENSE_PLATE = "license_plate"
+    ADDRESS = "address"
+    MD5 = "md5"
+    SHA1 = "sha1"
+    SHA256 = "sha256"
+    UNKNOWN = "unknown"
 
 
 @dataclass
@@ -56,16 +93,37 @@ class Target:
             if all(0 <= int(part) <= 255 for part in parts):
                 return "ip"
         
+        # Wi-Fi BSSID (must precede IPv6: both are hex/colons)
+        if re.match(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$', value):
+            return "bssid"
+
         # IPv6
         if re.match(r'^[a-fA-F0-9:]+$', value) and ':' in value:
             return "ipv6"
-        
+
+        # Cell tower ID (MCC-MNC-LAC-CID, before phone: both use dashes)
+        if re.match(r'^\d{3}-\d{2,3}-\d{1,5}-\d{1,9}$', value):
+            return "cell_tower"
+
         # Phone number (international format)
         if re.match(r'^\+?[0-9\s-]{10,15}$', value):
             return "phone"
-        
-        # Bitcoin address
+
+        # GPS coordinates ("lat,lon" decimal degrees)
+        if re.match(r'^-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?$', value):
+            try:
+                lat_s, lon_s = [part.strip() for part in value.split(",")]
+                if abs(float(lat_s)) <= 90 and abs(float(lon_s)) <= 180:
+                    return "coordinates"
+            except ValueError:
+                pass
+
+        # Bitcoin address (legacy Base58)
         if re.match(r'^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$', value):
+            return "bitcoin"
+
+        # Bitcoin address (bech32 / bech32m)
+        if re.match(r'^(bc1|tb1)[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{11,71}$', value):
             return "bitcoin"
         
         # Ethereum address

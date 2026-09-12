@@ -765,7 +765,23 @@ class ProxyManager:
             "https://9.9.9.9/dns-query"   # Quad9
         ]
     
-    def get_proxy(self, protocol: Optional[str] = None, 
+    def is_available(self) -> bool:
+        """Return True when any proxy route (pool or Tor) is usable.
+
+        Compatibility helper used by modules to decide between
+        proxied and direct requests.
+        """
+        try:
+            if self.pool.get_all_proxies():
+                return True
+        except Exception:
+            pass
+        try:
+            return bool(self.tor.is_available())
+        except Exception:
+            return False
+
+    def get_proxy(self, protocol: Optional[str] = None,
                   prefer_working: bool = True) -> Optional[ProxyConfig]:
         """Get a proxy for use"""
         if prefer_working:
