@@ -35,7 +35,7 @@ EXPECTED_MODULES = {
                "deleted_content_recovery"],
     "dark_web": ["onion_resolver", "i2p_crawler", "marketplace_scraper",
                  "pgp_fingerprint", "crypto_tracer"],
-    # New categories
+    # Batch 1 categories
     "phone": ["carrier_lookup", "sim_swap_check", "voip_tracer",
               "sms_phishing_db"],
     "crypto": ["btc_cluster", "eth_tracer", "exchange_linker",
@@ -44,13 +44,19 @@ EXPECTED_MODULES = {
                     "cell_tower_lookup"],
     "file": ["exif_extractor", "pdf_metadata", "steg_detect",
              "office_macro_analysis"],
+    # Batch 2 categories
     "physical": ["geocoder", "satellite_imagery", "property_records",
                  "neighbor_mapper"],
     "transport": ["flight_tracker", "ship_tracker", "vehicle_vin",
                   "license_plate"],
+    # Batch 3 categories
+    "iot": ["shodan_iot", "default_creds", "firmware_scanner",
+            "mqtt_brute"],
+    "threat": ["threat_fox", "misp_lookup", "abuse_ch",
+               "firehol"],
 }
 
-# Offline validate_target spot checks for the new modules:
+# Offline validate_target spot checks for modules:
 # (category, module, good_target, bad_target)
 VALIDATE_CASES = [
     ("phone", "carrier_lookup", "+8801712345678", "not-a-number"),
@@ -80,6 +86,14 @@ VALIDATE_CASES = [
     ("transport", "ship_tracker", "9314412", ""),
     ("transport", "vehicle_vin", "1HGCR2F83HA000000", ""),
     ("transport", "license_plate", "1ABC123", ""),
+    ("iot", "shodan_iot", "camera", ""),
+    ("iot", "default_creds", "cisco", ""),
+    ("iot", "firmware_scanner", "firmware.bin", ""),
+    ("iot", "mqtt_brute", "127.0.0.1", ""),
+    ("threat", "threat_fox", "8.8.8.8", ""),
+    ("threat", "misp_lookup", "example.com", ""),
+    ("threat", "abuse_ch", "http://example.com/malware.exe", ""),
+    ("threat", "firehol", "1.1.1.1", ""),
 ]
 
 
@@ -192,4 +206,3 @@ async def test_auto_registration_and_no_sandbox():
     res = await manager.executor.execute("exif_extractor", "nonexistent.jpg", no_sandbox=True)
     assert res.status == "failed"
     assert "File not found" in res.error
-

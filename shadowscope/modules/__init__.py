@@ -42,6 +42,12 @@ from .geolocation import (
     ip_geolocate,
     wifi_mapping,
 )
+from .iot import (
+    default_creds,
+    firmware_scanner,
+    mqtt_brute,
+    shodan_iot,
+)
 from .ip import (
     asn_lookup,
     bgp_hijack,
@@ -66,6 +72,12 @@ from .social import (
     friend_mapper,
     profile_scraper,
     username_sherlock,
+)
+from .threat import (
+    abuse_ch,
+    firehol,
+    misp_lookup,
+    threat_fox,
 )
 from .transport import (
     flight_tracker,
@@ -107,4 +119,10 @@ __all__ = [
 
     # Transport Intelligence modules
     "flight_tracker", "ship_tracker", "vehicle_vin", "license_plate",
+
+    # IoT OSINT modules
+    "shodan_iot", "default_creds", "firmware_scanner", "mqtt_brute",
+
+    # Threat Intelligence modules
+    "threat_fox", "misp_lookup", "abuse_ch", "firehol",
 ]
