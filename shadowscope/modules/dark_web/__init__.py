@@ -2,11 +2,11 @@
 Dark Web Modules for SHADOWSCOPE
 """
 
-from .onion_resolver import onion_resolver_module
+from .crypto_tracer import crypto_tracer_module
 from .i2p_crawler import i2p_crawler_module
 from .marketplace_scraper import marketplace_scraper_module
+from .onion_resolver import onion_resolver_module
 from .pgp_fingerprint import pgp_fingerprint_module
-from .crypto_tracer import crypto_tracer_module
 
 # Module registry
 MODULES = {

@@ -35,16 +35,39 @@ EXPECTED_MODULES = {
                "deleted_content_recovery"],
     "dark_web": ["onion_resolver", "i2p_crawler", "marketplace_scraper",
                  "pgp_fingerprint", "crypto_tracer"],
-    # New categories
+    # Batch 1 categories
     "phone": ["carrier_lookup", "sim_swap_check", "voip_tracer",
               "sms_phishing_db"],
     "crypto": ["btc_cluster", "eth_tracer", "exchange_linker",
                "darknet_ties"],
     "geolocation": ["ip_geolocate", "gps_tracker", "wifi_mapping",
                     "cell_tower_lookup"],
+    "file": ["exif_extractor", "pdf_metadata", "steg_detect",
+             "office_macro_analysis"],
+    # Batch 2 categories
+    "physical": ["geocoder", "satellite_imagery", "property_records",
+                 "neighbor_mapper"],
+    "transport": ["flight_tracker", "ship_tracker", "vehicle_vin",
+                  "license_plate"],
+    # Batch 3 categories
+    "iot": ["shodan_iot", "default_creds", "firmware_scanner",
+            "mqtt_brute"],
+    "threat": ["threat_fox", "misp_lookup", "abuse_ch",
+               "firehol"],
+    # Batch 4 categories
+    "malware": ["virus_total", "hybrid_analysis", "yara_scan",
+                "malware_family_identifier"],
+    "financial": ["credit_card_bin", "iban_lookup", "swift_code",
+                  "transaction_tracer"],
+    # Batch 5 categories
+    "legal": ["business_registration", "court_records", "trademark_lookup",
+              "patent_search"],
+    "url": ["wayback_scraper", "param_brute", "js_analyzer",
+            "csp_checker", "web_fingerprint", "screenshot_capture",
+            "link_crawler"],
 }
 
-# Offline validate_target spot checks for the new modules:
+# Offline validate_target spot checks for modules:
 # (category, module, good_target, bad_target)
 VALIDATE_CASES = [
     ("phone", "carrier_lookup", "+8801712345678", "not-a-number"),
@@ -62,6 +85,45 @@ VALIDATE_CASES = [
     ("geolocation", "gps_tracker", "23.8103, 90.4125", "hello world"),
     ("geolocation", "wifi_mapping", "00:1A:11:22:33:44", "not-a-bssid"),
     ("geolocation", "cell_tower_lookup", "470-01-1234-56789", "abc"),
+    ("file", "exif_extractor", "sample.jpg", ""),
+    ("file", "pdf_metadata", "document.pdf", "   "),
+    ("file", "steg_detect", "image.png", ""),
+    ("file", "office_macro_analysis", "document.docm", ""),
+    ("physical", "geocoder", "23.8103, 90.4125", ""),
+    ("physical", "satellite_imagery", "23.8103, 90.4125", ""),
+    ("physical", "property_records", "123 Main St, New York, NY", ""),
+    ("physical", "neighbor_mapper", "23.8103, 90.4125", ""),
+    ("transport", "flight_tracker", "AA123", ""),
+    ("transport", "ship_tracker", "9314412", ""),
+    ("transport", "vehicle_vin", "1HGCR2F83HA000000", ""),
+    ("transport", "license_plate", "1ABC123", ""),
+    ("iot", "shodan_iot", "camera", ""),
+    ("iot", "default_creds", "cisco", ""),
+    ("iot", "firmware_scanner", "firmware.bin", ""),
+    ("iot", "mqtt_brute", "127.0.0.1", ""),
+    ("threat", "threat_fox", "8.8.8.8", ""),
+    ("threat", "misp_lookup", "example.com", ""),
+    ("threat", "abuse_ch", "http://example.com/malware.exe", ""),
+    ("threat", "firehol", "1.1.1.1", ""),
+    ("malware", "virus_total", "44d88612fea8a8f36de82e1278abb02f", ""),
+    ("malware", "hybrid_analysis", "44d88612fea8a8f36de82e1278abb02f", ""),
+    ("malware", "yara_scan", "sample.bin", ""),
+    ("malware", "malware_family_identifier", "LockBit", ""),
+    ("financial", "credit_card_bin", "400000", "123"),
+    ("financial", "iban_lookup", "GB33BUKB20201555555555", "12"),
+    ("financial", "swift_code", "CHASUS33", "XYZ"),
+    ("financial", "transaction_tracer", "ch_1N2e3f4g5h6i7j8k9l0m1n2o", ""),
+    ("legal", "business_registration", "Acme Corp", ""),
+    ("legal", "court_records", "John Doe", ""),
+    ("legal", "trademark_lookup", "SHADOWSCOPE", ""),
+    ("legal", "patent_search", "AI neural network", ""),
+    ("url", "wayback_scraper", "example.com", ""),
+    ("url", "param_brute", "https://example.com", ""),
+    ("url", "js_analyzer", "https://example.com/app.js", ""),
+    ("url", "csp_checker", "https://example.com", ""),
+    ("url", "web_fingerprint", "https://example.com", ""),
+    ("url", "screenshot_capture", "https://example.com", ""),
+    ("url", "link_crawler", "https://example.com", ""),
 ]
 
 
@@ -87,7 +149,9 @@ def test_target_type_enum_values():
     assert TargetType.COORDINATES == "coordinates"
     assert TargetType.BSSID == "bssid"
     assert TargetType.CELL_TOWER == "cell_tower"
+    assert TargetType.FILE == "file"
     assert TargetType("phone") is TargetType.PHONE
+    assert TargetType("file") is TargetType.FILE
 
 
 def test_module_config_dict_roundtrip():
@@ -149,5 +213,26 @@ def test_target_autodetect_new_types():
     assert Target("+8801712345678").target_type == "phone"
     assert Target("23.8103, 90.4125").target_type == "coordinates"
     assert Target("00:1A:11:22:33:44").target_type == "bssid"
+    assert Target("sample.jpg").target_type == "file"
+    assert Target("document.pdf").target_type == "file"
     bc1 = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
     assert Target(bc1).target_type == "bitcoin"
+
+
+@pytest.mark.asyncio
+async def test_auto_registration_and_no_sandbox():
+    manager = ModuleManager()
+    # exif_extractor built-in module
+    metadata = manager.get_module("exif_extractor")
+    assert metadata is not None
+    assert metadata.name == "exif_extractor"
+
+    # Verify auto-registration into storage
+    stored = manager.storage.get_module("exif_extractor")
+    assert stored is not None
+    assert stored.name == "exif_extractor"
+
+    # Test executor execution with no_sandbox flag
+    res = await manager.executor.execute("exif_extractor", "nonexistent.jpg", no_sandbox=True)
+    assert res.status == "failed"
+    assert "File not found" in res.error

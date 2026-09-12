@@ -3,18 +3,18 @@ Profile Scraper Module for SHADOWSCOPE
 Scrapes social media profiles for information.
 """
 
-import asyncio
-import aiohttp
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
-from datetime import datetime
-from rich.console import Console
 import re
-from bs4 import BeautifulSoup
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
-from shadowscope.core.modules import BaseModule, ModuleResult, ModuleConfig
+import aiohttp
+from bs4 import BeautifulSoup
+from rich.console import Console
+
+from shadowscope.core import cache, proxy
+from shadowscope.core.modules import BaseModule, ModuleConfig, ModuleResult
 from shadowscope.core.targets import TargetType
-from shadowscope.core import proxy, cache
 
 console = Console()
 
@@ -22,7 +22,7 @@ console = Console()
 @dataclass
 class ProfileScraperConfig(ModuleConfig):
     """Configuration for profile scraper module"""
-    api_endpoints: Dict[str, str] = None
+    api_endpoints: dict[str, str] = None
     timeout: float = 60.0
     use_proxy: bool = True
     max_retries: int = 3
@@ -33,7 +33,7 @@ class ProfileScraperConfig(ModuleConfig):
     scrape_following: bool = True
     max_posts: int = 10
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    
+
     def __post_init__(self):
         if self.api_endpoints is None:
             self.api_endpoints = {
@@ -50,26 +50,26 @@ class ProfileScraperModule(BaseModule):
     Scrapes social media profiles for information.
     Extracts bio, posts, followers, following, and other profile data.
     """
-    
+
     MODULE_NAME = "profile_scraper"
     MODULE_VERSION = "1.0.0"
     MODULE_AUTHOR = "SHADOWSCOPE"
     MODULE_CATEGORY = "Social Engineering"
     MODULE_DESCRIPTION = "Social media profile scraping and data extraction"
     MODULE_TARGET_TYPES = [TargetType.USERNAME, TargetType.EMAIL, TargetType.URL]
-    
+
     DEFAULT_CONFIG = ProfileScraperConfig
-    
-    def __init__(self, config: Optional[ProfileScraperConfig] = None):
+
+    def __init__(self, config: ProfileScraperConfig | None = None):
         super().__init__(config or ProfileScraperConfig())
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.platform_urls: Dict[str, str] = {}
-    
+        self.session: aiohttp.ClientSession | None = None
+        self.platform_urls: dict[str, str] = {}
+
     async def initialize(self) -> None:
         """Initialize the module"""
         connector = aiohttp.TCPConnector(ssl=False)
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-        
+
         if self.config.use_proxy and proxy.is_available():
             proxy_url = proxy.get_random_proxy()
             self.session = aiohttp.ClientSession(
@@ -84,11 +84,11 @@ class ProfileScraperModule(BaseModule):
                 timeout=timeout,
                 headers={"User-Agent": self.config.user_agent}
             )
-        
+
         # Initialize platform URLs
         self.platform_urls = await self.get_platform_urls()
-    
-    async def get_platform_urls(self) -> Dict[str, str]:
+
+    async def get_platform_urls(self) -> dict[str, str]:
         """Get URLs for all platforms"""
         platform_urls = {
             # Social Media
@@ -102,7 +102,7 @@ class ProfileScraperModule(BaseModule):
             "tumblr": "https://{}.tumblr.com",
             "reddit": "https://reddit.com/user/{}",
             "medium": "https://medium.com/@{}",
-            
+
             # Professional
             "github": "https://github.com/{}",
             "gitlab": "https://gitlab.com/{}",
@@ -111,7 +111,7 @@ class ProfileScraperModule(BaseModule):
             "devto": "https://dev.to/{}",
             "dribbble": "https://dribbble.com/{}",
             "behance": "https://www.behance.net/{}",
-            
+
             # Creative
             "vimeo": "https://vimeo.com/{}",
             "soundcloud": "https://soundcloud.com/{}",
@@ -119,10 +119,10 @@ class ProfileScraperModule(BaseModule):
             "youtube": "https://youtube.com/c/{}",
             "twitch": "https://twitch.tv/{}",
         }
-        
+
         return platform_urls
-    
-    async def execute(self, target: str, options: Optional[Dict[str, Any]] = None) -> ModuleResult:
+
+    async def execute(self, target: str, options: dict[str, Any] | None = None) -> ModuleResult:
         """Execute the profile scraper module"""
         result = ModuleResult(
             module=self.MODULE_NAME,
@@ -130,7 +130,7 @@ class ProfileScraperModule(BaseModule):
             status="started",
             start_time=datetime.utcnow()
         )
-        
+
         try:
             # Validate target
             target_type = self.validate_target(target)
@@ -138,14 +138,14 @@ class ProfileScraperModule(BaseModule):
                 result.status = "error"
                 result.error = f"Invalid target: {target}"
                 return result
-            
+
             # Extract username and platform if URL
             username, platform = self.parse_target(target)
             if not username:
                 result.status = "error"
                 result.error = f"Could not extract username from: {target}"
                 return result
-            
+
             # Check cache
             cache_key = f"profile_scraper:{platform}:{username}"
             cached = cache.get(cache_key)
@@ -153,20 +153,20 @@ class ProfileScraperModule(BaseModule):
                 result.status = "cached"
                 result.data = cached
                 return result
-            
+
             # Initialize
             await self.initialize()
-            
+
             # Scrape profile
             profile_data = await self.scrape_profile(username, platform)
-            
+
             # Store in cache
             cache.set(cache_key, profile_data, ttl=3600)  # 1 hour
-            
+
             result.status = "success"
             result.data = profile_data
             result.end_time = datetime.utcnow()
-            
+
         except Exception as e:
             result.status = "error"
             result.error = str(e)
@@ -174,9 +174,9 @@ class ProfileScraperModule(BaseModule):
         finally:
             if self.session:
                 await self.session.close()
-        
+
         return result
-    
+
     def parse_target(self, target: str) -> tuple:
         """Parse target to extract username and platform"""
         # Check if it's a URL
@@ -186,11 +186,11 @@ class ProfileScraperModule(BaseModule):
                     # Extract username from URL
                     username = target.replace(url_template.format("{}"), "")
                     return username, platform
-        
+
         # Otherwise, treat as username
         return target, None
-    
-    async def scrape_profile(self, username: str, platform: Optional[str] = None) -> Dict[str, Any]:
+
+    async def scrape_profile(self, username: str, platform: str | None = None) -> dict[str, Any]:
         """Scrape profile from a platform"""
         data = {
             "username": username,
@@ -205,28 +205,28 @@ class ProfileScraperModule(BaseModule):
             "metadata": {},
             "analysis": {}
         }
-        
+
         # Determine platform if not specified
         if not platform:
             platform = await self.detect_platform(username)
             data["platform"] = platform
-        
+
         if not platform:
             data["error"] = "Could not determine platform"
             return data
-        
+
         # Get URL
         url_template = self.platform_urls.get(platform)
         if url_template:
             data["url"] = url_template.format(username)
-        
+
         # Check if profile exists
         exists = await self.check_profile_exists(username, platform)
         data["exists"] = exists
-        
+
         if not exists:
             return data
-        
+
         # Scrape profile based on platform
         if platform == "twitter":
             data["profile"] = await self.scrape_twitter(username)
@@ -240,30 +240,30 @@ class ProfileScraperModule(BaseModule):
             data["profile"] = await self.scrape_reddit(username)
         else:
             data["profile"] = await self.scrape_generic(username, platform)
-        
+
         # Extract bio if configured
         if self.config.scrape_bio:
             data["bio"] = data["profile"].get("bio") or data["profile"].get("description")
-        
+
         # Extract followers/following if configured
         if self.config.scrape_followers:
             data["followers"] = data["profile"].get("followers")
             data["following"] = data["profile"].get("following")
-        
+
         # Scrape posts if configured
         if self.config.scrape_posts:
             data["posts"] = await self.scrape_posts(username, platform)
-        
+
         # Analyze the data
         data["analysis"] = self.analyze_profile_data(data)
-        
+
         return data
-    
-    async def detect_platform(self, username: str) -> Optional[str]:
+
+    async def detect_platform(self, username: str) -> str | None:
         """Detect which platform a username belongs to"""
         # This is a simplified detection
         # In a real implementation, this would check multiple platforms
-        
+
         # Check common patterns
         if "@" in username:
             return "twitter"
@@ -271,18 +271,18 @@ class ProfileScraperModule(BaseModule):
             return "reddit"
         elif len(username) == 40 and all(c in "0123456789abcdef" for c in username):
             return "github"  # GitHub user ID
-        
+
         # Default to twitter
         return "twitter"
-    
+
     async def check_profile_exists(self, username: str, platform: str) -> bool:
         """Check if a profile exists on a platform"""
         url_template = self.platform_urls.get(platform)
         if not url_template:
             return False
-        
+
         url = url_template.format(username)
-        
+
         try:
             async with self.session.get(url, allow_redirects=True) as response:
                 if response.status == 200:
@@ -293,8 +293,8 @@ class ProfileScraperModule(BaseModule):
                     return True  # Assume exists for non-404 status
         except Exception:
             return False
-    
-    async def scrape_twitter(self, username: str) -> Dict[str, Any]:
+
+    async def scrape_twitter(self, username: str) -> dict[str, Any]:
         """Scrape Twitter profile"""
         profile = {
             "platform": "twitter",
@@ -312,15 +312,15 @@ class ProfileScraperModule(BaseModule):
             "avatar": None,
             "banner": None
         }
-        
+
         try:
             url = f"https://twitter.com/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract profile data
                     profile["name"] = self.extract_twitter_name(soup)
                     profile["bio"] = self.extract_twitter_bio(soup)
@@ -336,10 +336,10 @@ class ProfileScraperModule(BaseModule):
                     profile["banner"] = self.extract_twitter_banner(soup)
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_instagram(self, username: str) -> Dict[str, Any]:
+
+    async def scrape_instagram(self, username: str) -> dict[str, Any]:
         """Scrape Instagram profile"""
         profile = {
             "platform": "instagram",
@@ -354,15 +354,15 @@ class ProfileScraperModule(BaseModule):
             "avatar": None,
             "is_private": False
         }
-        
+
         try:
             url = f"https://instagram.com/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract profile data
                     profile["name"] = self.extract_instagram_name(soup)
                     profile["bio"] = self.extract_instagram_bio(soup)
@@ -375,10 +375,10 @@ class ProfileScraperModule(BaseModule):
                     profile["is_private"] = self.extract_instagram_private(soup)
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_github(self, username: str) -> Dict[str, Any]:
+
+    async def scrape_github(self, username: str) -> dict[str, Any]:
         """Scrape GitHub profile"""
         profile = {
             "platform": "github",
@@ -396,15 +396,15 @@ class ProfileScraperModule(BaseModule):
             "company": None,
             "email": None
         }
-        
+
         try:
             url = f"https://github.com/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract profile data
                     profile["name"] = self.extract_github_name(soup)
                     profile["bio"] = self.extract_github_bio(soup)
@@ -420,10 +420,10 @@ class ProfileScraperModule(BaseModule):
                     profile["email"] = self.extract_github_email(soup)
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_linkedin(self, username: str) -> Dict[str, Any]:
+
+    async def scrape_linkedin(self, username: str) -> dict[str, Any]:
         """Scrape LinkedIn profile"""
         profile = {
             "platform": "linkedin",
@@ -438,15 +438,15 @@ class ProfileScraperModule(BaseModule):
             "connections": None,
             "avatar": None
         }
-        
+
         try:
             url = f"https://linkedin.com/in/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract profile data
                     profile["name"] = self.extract_linkedin_name(soup)
                     profile["headline"] = self.extract_linkedin_headline(soup)
@@ -459,10 +459,10 @@ class ProfileScraperModule(BaseModule):
                     profile["avatar"] = self.extract_linkedin_avatar(soup)
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_reddit(self, username: str) -> Dict[str, Any]:
+
+    async def scrape_reddit(self, username: str) -> dict[str, Any]:
         """Scrape Reddit profile"""
         profile = {
             "platform": "reddit",
@@ -475,15 +475,15 @@ class ProfileScraperModule(BaseModule):
             "avatar": None,
             "banner": None
         }
-        
+
         try:
             url = f"https://reddit.com/user/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract profile data
                     profile["name"] = self.extract_reddit_name(soup)
                     profile["karma"] = self.extract_reddit_karma(soup)
@@ -494,10 +494,10 @@ class ProfileScraperModule(BaseModule):
                     profile["banner"] = self.extract_reddit_banner(soup)
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_generic(self, username: str, platform: str) -> Dict[str, Any]:
+
+    async def scrape_generic(self, username: str, platform: str) -> dict[str, Any]:
         """Scrape generic profile"""
         profile = {
             "platform": platform,
@@ -508,17 +508,17 @@ class ProfileScraperModule(BaseModule):
             "join_date": None,
             "content": None
         }
-        
+
         try:
             url_template = self.platform_urls.get(platform)
             if url_template:
                 url = url_template.format(username)
-                
+
                 async with self.session.get(url) as response:
                     if response.status == 200:
                         html = await response.text()
                         soup = BeautifulSoup(html, "html.parser")
-                        
+
                         # Extract basic profile data
                         profile["name"] = self.extract_generic_name(soup)
                         profile["bio"] = self.extract_generic_bio(soup)
@@ -526,13 +526,13 @@ class ProfileScraperModule(BaseModule):
                         profile["content"] = str(soup.get_text()[:1000])  # First 1000 chars
         except Exception as e:
             profile["error"] = str(e)
-        
+
         return profile
-    
-    async def scrape_posts(self, username: str, platform: str) -> List[Dict[str, Any]]:
+
+    async def scrape_posts(self, username: str, platform: str) -> list[dict[str, Any]]:
         """Scrape recent posts from a profile"""
         posts = []
-        
+
         try:
             if platform == "twitter":
                 posts = await self.scrape_twitter_posts(username)
@@ -544,24 +544,24 @@ class ProfileScraperModule(BaseModule):
                 posts = await self.scrape_github_repos(username)
         except Exception as e:
             posts = [{"error": str(e)}]
-        
+
         return posts[:self.config.max_posts]
-    
-    async def scrape_twitter_posts(self, username: str) -> List[Dict[str, Any]]:
+
+    async def scrape_twitter_posts(self, username: str) -> list[dict[str, Any]]:
         """Scrape Twitter posts"""
         posts = []
-        
+
         try:
             url = f"https://twitter.com/{username}"
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, "html.parser")
-                    
+
                     # Extract tweets
                     tweets = soup.find_all("div", {"data-testid": "tweet"})
-                    
+
                     for tweet in tweets:
                         posts.append({
                             "text": self.extract_tweet_text(tweet),
@@ -572,77 +572,77 @@ class ProfileScraperModule(BaseModule):
                         })
         except Exception as e:
             posts = [{"error": str(e)}]
-        
+
         return posts
-    
+
     # Extractors for Twitter
-    def extract_twitter_name(self, soup: BeautifulSoup) -> Optional[str]:
+    def extract_twitter_name(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("span", {"class": "ProfileHeaderCard-name"})
         return element.get_text().strip() if element else None
-    
-    def extract_twitter_bio(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_bio(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("p", {"class": "ProfileHeaderCard-bio"})
         return element.get_text().strip() if element else None
-    
-    def extract_twitter_location(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_location(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("span", {"class": "ProfileHeaderCard-location"})
         return element.get_text().strip() if element else None
-    
-    def extract_twitter_url(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_url(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("a", {"class": "ProfileHeaderCard-url"})
         return element["href"] if element else None
-    
-    def extract_twitter_join_date(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_join_date(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("span", {"class": "ProfileHeaderCard-joinDate"})
         return element.get_text().strip() if element else None
-    
-    def extract_twitter_tweets(self, soup: BeautifulSoup) -> Optional[int]:
+
+    def extract_twitter_tweets(self, soup: BeautifulSoup) -> int | None:
         element = soup.find("span", {"class": "ProfileNav-value", "data-nav": "tweets"})
         if element:
             text = element.get_text().strip()
             return self.parse_number(text)
         return None
-    
-    def extract_twitter_following(self, soup: BeautifulSoup) -> Optional[int]:
+
+    def extract_twitter_following(self, soup: BeautifulSoup) -> int | None:
         element = soup.find("span", {"class": "ProfileNav-value", "data-nav": "following"})
         if element:
             text = element.get_text().strip()
             return self.parse_number(text)
         return None
-    
-    def extract_twitter_followers(self, soup: BeautifulSoup) -> Optional[int]:
+
+    def extract_twitter_followers(self, soup: BeautifulSoup) -> int | None:
         element = soup.find("span", {"class": "ProfileNav-value", "data-nav": "followers"})
         if element:
             text = element.get_text().strip()
             return self.parse_number(text)
         return None
-    
-    def extract_twitter_likes(self, soup: BeautifulSoup) -> Optional[int]:
+
+    def extract_twitter_likes(self, soup: BeautifulSoup) -> int | None:
         element = soup.find("span", {"class": "ProfileNav-value", "data-nav": "favorites"})
         if element:
             text = element.get_text().strip()
             return self.parse_number(text)
         return None
-    
+
     def extract_twitter_verified(self, soup: BeautifulSoup) -> bool:
         element = soup.find("i", {"class": "Icon--verified"})
         return element is not None
-    
-    def extract_twitter_avatar(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_avatar(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("img", {"class": "ProfileAvatar-image"})
         return element["src"] if element else None
-    
-    def extract_twitter_banner(self, soup: BeautifulSoup) -> Optional[str]:
+
+    def extract_twitter_banner(self, soup: BeautifulSoup) -> str | None:
         element = soup.find("div", {"class": "ProfileCanopy-headerBg"})
         if element:
             return element["style"].split("url('")[1].split("')")[0] if "url('" in element.get("style", "") else None
         return None
-    
+
     # Helper methods
-    def parse_number(self, text: str) -> Optional[int]:
+    def parse_number(self, text: str) -> int | None:
         """Parse number from text (e.g., '1.2K' -> 1200)"""
         text = text.strip().upper()
-        
+
         if "K" in text:
             num = float(text.replace("K", ""))
             return int(num * 1000)
@@ -654,29 +654,28 @@ class ProfileScraperModule(BaseModule):
                 return int(text.replace(",", ""))
             except ValueError:
                 return None
-    
-    def validate_target(self, target: str) -> Optional[TargetType]:
+
+    def validate_target(self, target: str) -> TargetType | None:
         """Validate target and return its type"""
-        import re
-        
+
         # Check if it's a URL
         url_pattern = r"^https?://[a-zA-Z0-9.-]+/([a-zA-Z0-9._-]+)"
         if re.match(url_pattern, target):
             return TargetType.URL
-        
+
         # Check if it's an email
         email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if re.match(email_pattern, target):
             return TargetType.EMAIL
-        
+
         # Check if it's a username
         username_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9._-]{1,30}[a-zA-Z0-9]$"
         if re.match(username_pattern, target):
             return TargetType.USERNAME
-        
+
         return None
-    
-    def analyze_profile_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def analyze_profile_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Analyze profile data"""
         analysis = {
             "username": data["username"],
@@ -694,15 +693,15 @@ class ProfileScraperModule(BaseModule):
             "is_private": data["profile"].get("is_private", False),
             "recommendations": []
         }
-        
+
         # Check if active
         if analysis["posts_count"] > 0:
             analysis["is_active"] = True
-        
+
         # Check if influencer (arbitrary threshold)
         if analysis["followers_count"] > 10000:
             analysis["is_influencer"] = True
-        
+
         # Generate recommendations
         if not data["exists"]:
             analysis["recommendations"].append(
@@ -713,7 +712,7 @@ class ProfileScraperModule(BaseModule):
                 analysis["recommendations"].append(
                     "Profile is private - limited information available"
                 )
-            
+
             if analysis["is_active"]:
                 analysis["recommendations"].append(
                     f"ACTIVE: Profile has {analysis['posts_count']} posts"
@@ -722,17 +721,17 @@ class ProfileScraperModule(BaseModule):
                 analysis["recommendations"].append(
                     "Profile appears to be inactive"
                 )
-            
+
             if analysis["is_influencer"]:
                 analysis["recommendations"].append(
                     f"INFLUENCER: Profile has {analysis['followers_count']:,} followers"
                 )
-            
+
             if analysis["has_bio"]:
                 analysis["recommendations"].append(
                     f"BIO: {analysis['bio_length']} character bio"
                 )
-        
+
         return analysis
 
 

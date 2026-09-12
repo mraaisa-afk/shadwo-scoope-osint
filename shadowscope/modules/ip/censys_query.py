@@ -3,17 +3,16 @@ Censys Query Module for SHADOWSCOPE
 Queries Censys database for IP and domain intelligence.
 """
 
-import asyncio
-import aiohttp
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from rich.console import Console
-import json
+from typing import Any
 
-from shadowscope.core.modules import BaseModule, ModuleResult, ModuleConfig
+import aiohttp
+from rich.console import Console
+
+from shadowscope.core import cache, proxy
+from shadowscope.core.modules import BaseModule, ModuleConfig, ModuleResult
 from shadowscope.core.targets import TargetType
-from shadowscope.core import proxy, cache
 
 console = Console()
 
@@ -21,8 +20,8 @@ console = Console()
 @dataclass
 class CensysQueryConfig(ModuleConfig):
     """Configuration for Censys query module"""
-    api_id: Optional[str] = None
-    api_secret: Optional[str] = None
+    api_id: str | None = None
+    api_secret: str | None = None
     api_url: str = "https://api.censys.io/v2"
     timeout: float = 60.0
     use_proxy: bool = True
@@ -38,26 +37,26 @@ class CensysQueryModule(BaseModule):
     Queries the Censys database for comprehensive internet-wide scan data.
     Provides information about hosts, services, and certificates.
     """
-    
+
     MODULE_NAME = "censys_query"
     MODULE_VERSION = "1.0.0"
     MODULE_AUTHOR = "SHADOWSCOPE"
     MODULE_CATEGORY = "IP/Network"
     MODULE_DESCRIPTION = "Censys database queries for IP and domain intelligence"
     MODULE_TARGET_TYPES = [TargetType.IP, TargetType.DOMAIN]
-    
+
     DEFAULT_CONFIG = CensysQueryConfig
-    
-    def __init__(self, config: Optional[CensysQueryConfig] = None):
+
+    def __init__(self, config: CensysQueryConfig | None = None):
         super().__init__(config or CensysQueryConfig())
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.access_token: Optional[str] = None
-    
+        self.session: aiohttp.ClientSession | None = None
+        self.access_token: str | None = None
+
     async def initialize(self) -> None:
         """Initialize the module"""
         connector = aiohttp.TCPConnector(ssl=False)
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
-        
+
         if self.config.use_proxy and proxy.is_available():
             proxy_url = proxy.get_random_proxy()
             self.session = aiohttp.ClientSession(
@@ -70,21 +69,21 @@ class CensysQueryModule(BaseModule):
                 connector=connector,
                 timeout=timeout
             )
-        
+
         # Authenticate if credentials are provided
         if self.config.api_id and self.config.api_secret:
             await self.authenticate()
-    
+
     async def authenticate(self) -> None:
         """Authenticate with Censys API"""
         url = f"{self.config.api_url}/authentication"
-        
+
         try:
             auth_data = {
                 "api_id": self.config.api_id,
                 "api_secret": self.config.api_secret
             }
-            
+
             async with self.session.post(url, json=auth_data) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -94,8 +93,8 @@ class CensysQueryModule(BaseModule):
                     console.print(f"[red]-[/red] Censys authentication failed: {response.status}")
         except Exception as e:
             console.print(f"[yellow]Warning: Censys authentication error: {e}[/yellow]")
-    
-    async def execute(self, target: str, options: Optional[Dict[str, Any]] = None) -> ModuleResult:
+
+    async def execute(self, target: str, options: dict[str, Any] | None = None) -> ModuleResult:
         """Execute the Censys query module"""
         result = ModuleResult(
             module=self.MODULE_NAME,
@@ -103,7 +102,7 @@ class CensysQueryModule(BaseModule):
             status="started",
             start_time=datetime.utcnow()
         )
-        
+
         try:
             # Validate target
             target_type = self.validate_target(target)
@@ -111,7 +110,7 @@ class CensysQueryModule(BaseModule):
                 result.status = "error"
                 result.error = f"Invalid target: {target}"
                 return result
-            
+
             # Check cache
             cache_key = f"censys_query:{target}"
             cached = cache.get(cache_key)
@@ -119,26 +118,26 @@ class CensysQueryModule(BaseModule):
                 result.status = "cached"
                 result.data = cached
                 return result
-            
+
             # Initialize
             await self.initialize()
-            
+
             # Check authentication
             if not self.access_token and (self.config.api_id or self.config.api_secret):
                 result.status = "error"
                 result.error = "Censys authentication failed"
                 return result
-            
+
             # Query Censys
             censys_data = await self.query_censys(target, target_type)
-            
+
             # Store in cache
             cache.set(cache_key, censys_data, ttl=86400)  # 24 hours
-            
+
             result.status = "success"
             result.data = censys_data
             result.end_time = datetime.utcnow()
-            
+
         except Exception as e:
             result.status = "error"
             result.error = str(e)
@@ -146,10 +145,10 @@ class CensysQueryModule(BaseModule):
         finally:
             if self.session:
                 await self.session.close()
-        
+
         return result
-    
-    async def query_censys(self, target: str, target_type: TargetType) -> Dict[str, Any]:
+
+    async def query_censys(self, target: str, target_type: TargetType) -> dict[str, Any]:
         """Query Censys for target information"""
         data = {
             "target": target,
@@ -157,7 +156,7 @@ class CensysQueryModule(BaseModule):
             "censys": {},
             "analysis": {}
         }
-        
+
         if target_type == TargetType.IP:
             host_data = await self.get_host_data(target)
             if host_data:
@@ -168,18 +167,18 @@ class CensysQueryModule(BaseModule):
             if domain_data:
                 data["censys"]["domain"] = domain_data
                 data["analysis"] = self.analyze_domain_data(domain_data)
-        
+
         return data
-    
-    async def get_host_data(self, ip: str) -> Optional[Dict[str, Any]]:
+
+    async def get_host_data(self, ip: str) -> dict[str, Any] | None:
         """Get host data from Censys"""
         url = f"{self.config.api_url}/hosts/{ip}"
-        
+
         try:
             headers = {}
             if self.access_token:
                 headers["Authorization"] = f"Bearer {self.access_token}"
-            
+
             async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
@@ -191,18 +190,18 @@ class CensysQueryModule(BaseModule):
                     console.print("[yellow]Warning: Censys API rate limit exceeded[/yellow]")
         except Exception as e:
             console.print(f"[yellow]Warning: Failed to get host data: {e}[/yellow]")
-        
+
         return None
-    
-    async def get_domain_data(self, domain: str) -> Optional[Dict[str, Any]]:
+
+    async def get_domain_data(self, domain: str) -> dict[str, Any] | None:
         """Get domain data from Censys"""
         url = f"{self.config.api_url}/domains/{domain}"
-        
+
         try:
             headers = {}
             if self.access_token:
                 headers["Authorization"] = f"Bearer {self.access_token}"
-            
+
             async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
@@ -210,27 +209,27 @@ class CensysQueryModule(BaseModule):
                     console.print(f"[yellow]Warning: No Censys data for domain: {domain}[/yellow]")
         except Exception as e:
             console.print(f"[yellow]Warning: Failed to get domain data: {e}[/yellow]")
-        
+
         return None
-    
-    async def search_hosts(self, query: str, per_page: int = 100) -> Optional[Dict[str, Any]]:
+
+    async def search_hosts(self, query: str, per_page: int = 100) -> dict[str, Any] | None:
         """Search Censys for hosts matching a query"""
         url = f"{self.config.api_url}/hosts/search?q={query}&per_page={per_page}"
-        
+
         try:
             headers = {}
             if self.access_token:
                 headers["Authorization"] = f"Bearer {self.access_token}"
-            
+
             async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
         except Exception as e:
             console.print(f"[yellow]Warning: Search failed: {e}[/yellow]")
-        
+
         return None
-    
-    def analyze_host_data(self, host_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def analyze_host_data(self, host_data: dict[str, Any]) -> dict[str, Any]:
         """Analyze Censys host data"""
         analysis = {
             "ip": host_data.get("ip"),
@@ -241,14 +240,14 @@ class CensysQueryModule(BaseModule):
             "location": {},
             "recommendations": []
         }
-        
+
         # Extract location
         location = host_data.get("location", {})
         if location:
             analysis["location"]["country"] = location.get("country")
             analysis["location"]["city"] = location.get("city")
             analysis["location"]["coordinates"] = location.get("coordinates")
-        
+
         # Extract services and ports
         services = host_data.get("services", [])
         if services:
@@ -257,18 +256,18 @@ class CensysQueryModule(BaseModule):
                 port = service.get("port")
                 service_name = service.get("service_name")
                 transport = service.get("transport_protocol")
-                
+
                 if port:
                     analysis["services"][port] = {
                         "service": service_name,
                         "transport": transport
                     }
-        
+
         # Check for common vulnerabilities
         for service in services:
             service_name = service.get("service_name", "").lower()
             version = service.get("version", "")
-            
+
             # Check for known vulnerable services
             vulnerable_services = {
                 "apache": ["2.2", "2.4"],
@@ -281,7 +280,7 @@ class CensysQueryModule(BaseModule):
                 "memcached": ["1.4", "1.5"],
                 "elasticsearch": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"],
             }
-            
+
             for service, versions in vulnerable_services.items():
                 if service in service_name:
                     for vuln_version in versions:
@@ -291,21 +290,21 @@ class CensysQueryModule(BaseModule):
                                 "version": version,
                                 "issue": f"Potentially vulnerable {service} {vuln_version}"
                             })
-        
+
         # Generate recommendations
         if analysis["open_ports"] > 10:
             analysis["recommendations"].append(
                 f"Multiple open ports ({analysis['open_ports']}) - consider reducing attack surface"
             )
-        
+
         if analysis["vulnerabilities"]:
             analysis["recommendations"].append(
                 f"Found {len(analysis['vulnerabilities'])} potentially vulnerable services"
             )
-        
+
         return analysis
-    
-    def analyze_domain_data(self, domain_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def analyze_domain_data(self, domain_data: dict[str, Any]) -> dict[str, Any]:
         """Analyze Censys domain data"""
         analysis = {
             "domain": domain_data.get("name"),
@@ -314,44 +313,44 @@ class CensysQueryModule(BaseModule):
             "certificates": [],
             "recommendations": []
         }
-        
+
         # Extract subdomains
         subdomains = domain_data.get("subdomains", [])
         if subdomains:
             analysis["subdomains"] = subdomains
-        
+
         # Extract IPs
         ips = domain_data.get("ips", [])
         if ips:
             analysis["ips"] = ips
-        
+
         # Extract certificates
         certs = domain_data.get("certificates", [])
         if certs:
             analysis["certificates"] = certs
-        
+
         # Generate recommendations
         if len(analysis["subdomains"]) > 50:
             analysis["recommendations"].append(
                 f"Large subdomain count ({len(analysis['subdomains'])}) - check for wildcard DNS"
             )
-        
+
         return analysis
-    
-    def validate_target(self, target: str) -> Optional[TargetType]:
+
+    def validate_target(self, target: str) -> TargetType | None:
         """Validate target and return its type"""
         import re
-        
+
         # Check if it's an IP
         ip_pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
         if re.match(ip_pattern, target):
             return TargetType.IP
-        
+
         # Check if it's a domain
         domain_pattern = r"^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](\.[a-zA-Z]{2,})+$"
         if re.match(domain_pattern, target):
             return TargetType.DOMAIN
-        
+
         return None
 
 

@@ -2,11 +2,11 @@
 Email OSINT Modules for SHADOWSCOPE
 """
 
-from .breach_lookup import breach_lookup_module
-from .spf_analyzer import spf_analyzer_module
-from .header_forensics import header_forensics_module
 from .alias_hunter import alias_hunter_module
+from .breach_lookup import breach_lookup_module
 from .disposable_check import disposable_check_module
+from .header_forensics import header_forensics_module
+from .spf_analyzer import spf_analyzer_module
 
 # Module registry
 MODULES = {
@@ -25,7 +25,7 @@ alias_hunter = alias_hunter_module
 disposable_check = disposable_check_module
 
 __all__ = [
-    "breach_lookup", "spf_analyzer", "header_forensics", 
+    "breach_lookup", "spf_analyzer", "header_forensics",
     "alias_hunter", "disposable_check",
     "MODULES"
 ]
