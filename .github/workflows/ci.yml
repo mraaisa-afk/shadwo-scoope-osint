@@ -39,6 +39,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default GITHUB_TOKEN permissions.
+# The `release` job needs `contents: write` to create GitHub releases,
+# otherwise the GitHub API returns 403 ("Too many retries. Aborting...").
+permissions:
+  contents: write
+
 env:
   PYTHON_VERSION: '3.11'
   POETRY_VERSION: '1.7.0'
@@ -271,7 +277,7 @@ jobs:
           path: dist/
       
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
           name: SHADOWSCOPE v1.0.0
