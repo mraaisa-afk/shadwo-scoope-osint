@@ -59,6 +59,12 @@ EXPECTED_MODULES = {
                 "malware_family_identifier"],
     "financial": ["credit_card_bin", "iban_lookup", "swift_code",
                   "transaction_tracer"],
+    # Batch 5 categories
+    "legal": ["business_registration", "court_records", "trademark_lookup",
+              "patent_search"],
+    "url": ["wayback_scraper", "param_brute", "js_analyzer",
+            "csp_checker", "web_fingerprint", "screenshot_capture",
+            "link_crawler"],
 }
 
 # Offline validate_target spot checks for modules:
@@ -107,6 +113,17 @@ VALIDATE_CASES = [
     ("financial", "iban_lookup", "GB33BUKB20201555555555", "12"),
     ("financial", "swift_code", "CHASUS33", "XYZ"),
     ("financial", "transaction_tracer", "ch_1N2e3f4g5h6i7j8k9l0m1n2o", ""),
+    ("legal", "business_registration", "Acme Corp", ""),
+    ("legal", "court_records", "John Doe", ""),
+    ("legal", "trademark_lookup", "SHADOWSCOPE", ""),
+    ("legal", "patent_search", "AI neural network", ""),
+    ("url", "wayback_scraper", "example.com", ""),
+    ("url", "param_brute", "https://example.com", ""),
+    ("url", "js_analyzer", "https://example.com/app.js", ""),
+    ("url", "csp_checker", "https://example.com", ""),
+    ("url", "web_fingerprint", "https://example.com", ""),
+    ("url", "screenshot_capture", "https://example.com", ""),
+    ("url", "link_crawler", "https://example.com", ""),
 ]
 
 

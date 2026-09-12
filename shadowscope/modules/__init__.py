@@ -61,6 +61,12 @@ from .ip import (
     port_knocking,
     shodan_scan,
 )
+from .legal import (
+    business_registration,
+    court_records,
+    patent_search,
+    trademark_lookup,
+)
 from .malware import (
     hybrid_analysis,
     malware_family_identifier,
@@ -96,6 +102,15 @@ from .transport import (
     license_plate,
     ship_tracker,
     vehicle_vin,
+)
+from .url import (
+    csp_checker,
+    js_analyzer,
+    link_crawler,
+    param_brute,
+    screenshot_capture,
+    wayback_scraper,
+    web_fingerprint,
 )
 
 __all__ = [
@@ -143,4 +158,10 @@ __all__ = [
 
     # Financial Recon modules
     "credit_card_bin", "iban_lookup", "swift_code", "transaction_tracer",
+
+    # Legal & Corporate OSINT modules
+    "business_registration", "court_records", "trademark_lookup", "patent_search",
+
+    # URL Reconnaissance modules
+    "wayback_scraper", "param_brute", "js_analyzer", "csp_checker", "web_fingerprint", "screenshot_capture", "link_crawler",
 ]
