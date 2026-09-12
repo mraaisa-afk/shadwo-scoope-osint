@@ -3,6 +3,7 @@ Storage Layer for SHADOWSCOPE
 Handles encrypted SQLite storage for all investigation data.
 """
 
+import csv
 import json
 import sqlite3
 import threading
@@ -144,9 +145,6 @@ class Storage:
         self.config = config or global_config
         self.encryption = EncryptionManager(self.config._encryption_key)
         self._db_path = Path(self.config.storage.path).expanduser()
-        # Re-entrant: import_json() holds this lock while calling add_target(),
-        # add_module() and add_result(), which take it again. A plain Lock
-        # deadlocks on the first imported record.
         self._lock = threading.RLock()
         self._init_db()
 
@@ -154,13 +152,11 @@ class Storage:
         """Initialize database and create tables"""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Enable WAL mode for better concurrency
         with self._get_connection() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA foreign_keys=ON")
 
-            # Create tables
             self._create_tables(conn)
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -171,7 +167,6 @@ class Storage:
 
     def _create_tables(self, conn: sqlite3.Connection):
         """Create all database tables"""
-        # Targets table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS targets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,7 +180,6 @@ class Storage:
             )
         """)
 
-        # Results table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,7 +195,6 @@ class Storage:
             )
         """)
 
-        # Modules table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS modules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -219,7 +212,6 @@ class Storage:
             )
         """)
 
-        # Indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_targets_type ON targets(target_type)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_targets_added ON targets(added_at)")
@@ -283,13 +275,11 @@ class Storage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # Check if target already exists
                 cursor.execute("SELECT id FROM targets WHERE target = ?", (target_obj.target,))
                 existing = cursor.fetchone()
 
                 if existing:
                     target_obj.id = existing['id']
-                    # Update existing target
                     cursor.execute("""
                         UPDATE targets SET
                             target_type = ?,
@@ -306,7 +296,6 @@ class Storage:
                         target_obj.id
                     ))
                 else:
-                    # Insert new target
                     cursor.execute("""
                         INSERT INTO targets (target, target_type, metadata, tags, added_at, updated_at, status)
                         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
@@ -327,47 +316,26 @@ class Storage:
         """Auto-detect target type"""
         import re
 
-        # Email
         if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', target):
             return "email"
-
-        # URL
         if target.startswith(('http://', 'https://', 'ftp://')):
             return "url"
-
-        # Domain
         if re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', target):
             return "domain"
-
-        # IP address
         if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', target):
             return "ip"
-
-        # IPv6
         if ':' in target and re.match(r'^[a-fA-F0-9:]+$', target):
             return "ipv6"
-
-        # Phone number
         if re.match(r'^\+?[0-9\s-]{10,}$', target):
             return "phone"
-
-        # Bitcoin address
         if re.match(r'^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$', target):
             return "bitcoin"
-
-        # Ethereum address
         if re.match(r'^0x[a-fA-F0-9]{40}$', target):
             return "ethereum"
-
-        # Onion address
         if target.endswith('.onion'):
             return "onion"
-
-        # I2P address
         if target.endswith('.i2p'):
             return "i2p"
-
-        # Username (simple detection)
         if re.match(r'^[a-zA-Z0-9_]{3,}$', target):
             return "username"
 
@@ -452,7 +420,6 @@ class Storage:
                     status=row['status']
                 )
 
-                # Filter by tags if specified
                 if tags:
                     target_tags = set(target.tags)
                     if not all(tag in target_tags for tag in tags):
@@ -468,14 +435,12 @@ class Storage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # Get current target
                 cursor.execute("SELECT * FROM targets WHERE id = ?", (target_id,))
                 row = cursor.fetchone()
 
                 if not row:
                     return False
 
-                # Build update query
                 updates = []
                 params = []
 
@@ -499,7 +464,6 @@ class Storage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # Delete results first (cascade will handle this, but explicit is better)
                 cursor.execute("DELETE FROM results WHERE target_id = ?", (target_id,))
                 cursor.execute("DELETE FROM targets WHERE id = ?", (target_id,))
                 conn.commit()
@@ -513,7 +477,6 @@ class Storage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # Encrypt sensitive data
                 encrypted_data = self._encrypt_data(result.data)
 
                 cursor.execute("""
@@ -656,7 +619,6 @@ class Storage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # Check if module exists
                 cursor.execute("SELECT id FROM modules WHERE name = ?", (module_info.name,))
                 existing = cursor.fetchone()
 
@@ -797,7 +759,6 @@ class Storage:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            # Search targets
             cursor.execute("""
                 SELECT 'target' as type, id, target as value, target_type, added_at
                 FROM targets
@@ -814,7 +775,6 @@ class Storage:
                     'timestamp': row['added_at']
                 })
 
-            # Search results
             cursor.execute("""
                 SELECT 'result' as type, r.id, t.target as value, r.module, r.status, r.started_at
                 FROM results r
@@ -833,7 +793,6 @@ class Storage:
                     'timestamp': row['started_at']
                 })
 
-            # Search modules
             cursor.execute("""
                 SELECT 'module' as type, id, name as value, category, description, installed_at
                 FROM modules
@@ -867,7 +826,6 @@ class Storage:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            # Total counts
             cursor.execute("SELECT COUNT(*) FROM targets")
             stats['targets'] = cursor.fetchone()[0]
 
@@ -877,17 +835,14 @@ class Storage:
             cursor.execute("SELECT COUNT(*) FROM modules")
             stats['modules'] = cursor.fetchone()[0]
 
-            # Targets by type
             cursor.execute("SELECT target_type, COUNT(*) as count FROM targets GROUP BY target_type")
             for row in cursor.fetchall():
                 stats['targets_by_type'][row['target_type']] = row['count']
 
-            # Results by module
             cursor.execute("SELECT module, COUNT(*) as count FROM results GROUP BY module")
             for row in cursor.fetchall():
                 stats['results_by_module'][row['module']] = row['count']
 
-            # Results by status
             cursor.execute("SELECT status, COUNT(*) as count FROM results GROUP BY status")
             for row in cursor.fetchall():
                 stats['results_by_status'][row['status']] = row['count']
@@ -896,7 +851,6 @@ class Storage:
 
     def backup(self, backup_path: str | None = None) -> str:
         """Create a backup of the database"""
-        from datetime import datetime
 
         backup_dir = Path("~/.shadowscope/backups").expanduser()
         backup_dir.mkdir(parents=True, exist_ok=True)
@@ -905,9 +859,6 @@ class Storage:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = str(backup_dir / f"shadowscope_backup_{timestamp}.db")
 
-        # Use SQLite's online backup API instead of a plain file copy: the
-        # database runs in WAL mode, so recently committed pages may still
-        # live in the -wal file and would be missing from a raw copy.
         source = self._get_connection()
         destination = sqlite3.connect(backup_path)
         try:
@@ -917,7 +868,6 @@ class Storage:
             destination.close()
             source.close()
 
-        # Encrypt backup if encryption is enabled
         if self.config.storage.encryption.get('enabled', True):
             self._encrypt_backup(backup_path)
 
@@ -939,7 +889,6 @@ class Storage:
         with open(encrypted_path, 'wb') as f:
             f.write(encrypted)
 
-        # Remove original
         backup_path_obj.unlink()
 
     def export_json(self, output_path: str,
@@ -965,6 +914,119 @@ class Storage:
 
         return output_path
 
+    def export_csv(self, output_path: str) -> str:
+        """Export targets and execution results to CSV format."""
+        all_targets = {t.id: t for t in self.get_all_targets()}
+        all_results = self.get_results_by_module("")
+
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "Target ID", "Target Value", "Target Type", "Module",
+                "Status", "Started At", "Completed At", "Summary / Details", "Error"
+            ])
+
+            for r in all_results:
+                t = all_targets.get(r.target_id)
+                target_val = t.target if t else str(r.target_id)
+                target_type = t.target_type if t else "unknown"
+                summary = r.data.get("summary", json.dumps(r.data))
+
+                writer.writerow([
+                    r.target_id, target_val, target_type, r.module,
+                    r.status, r.started_at, r.completed_at, summary, r.error or ""
+                ])
+
+        return output_path
+
+    def export_html(self, output_path: str) -> str:
+        """Export executive summary and execution results to styled HTML report."""
+        stats = self.get_stats()
+        all_targets = {t.id: t for t in self.get_all_targets()}
+        all_results = self.get_results_by_module("")
+
+        rows_html = ""
+        for r in all_results:
+            t = all_targets.get(r.target_id)
+            target_val = t.target if t else f"Target #{r.target_id}"
+            target_type = t.target_type if t else "unknown"
+            summary = r.data.get("summary", json.dumps(r.data, indent=1))
+
+            status_badge = f"<span style='color:green; font-weight:bold;'>{r.status}</span>" if r.status == "success" else f"<span style='color:red;'>{r.status}</span>"
+
+            rows_html += f"""
+            <tr>
+                <td>{r.id}</td>
+                <td><strong>{target_val}</strong> ({target_type})</td>
+                <td><code>{r.module}</code></td>
+                <td>{status_badge}</td>
+                <td>{r.started_at[:19]}</td>
+                <td><pre style='white-space: pre-wrap; margin:0;'>{summary}</pre></td>
+            </tr>
+            """
+
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SHADOWSCOPE Executive Intelligence Report</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 30px; line-height: 1.5; }}
+        h1, h2 {{ color: #38bdf8; border-bottom: 2px solid #1e293b; padding-bottom: 8px; }}
+        .stats-grid {{ display: flex; gap: 20px; margin-bottom: 30px; }}
+        .stat-card {{ background-color: #1e293b; border-radius: 8px; padding: 15px 25px; min-width: 150px; text-align: center; border: 1px solid #334155; }}
+        .stat-num {{ font-size: 2em; font-weight: bold; color: #38bdf8; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #1e293b; border-radius: 8px; overflow: hidden; }}
+        th, td {{ padding: 12px 16px; text-align: left; border-bottom: 1px solid #334155; }}
+        th {{ background-color: #0f172a; color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 0.85em; }}
+        tr:hover {{ background-color: #334155; }}
+        code {{ background-color: #0f172a; padding: 2px 6px; border-radius: 4px; color: #38bdf8; }}
+    </style>
+</head>
+<body>
+    <h1>SHADOWSCOPE OSINT Intelligence Report</h1>
+    <p>Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-num">{stats['targets']}</div>
+            <div>Total Targets</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num">{stats['results']}</div>
+            <div>Executed Results</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num">{stats['modules']}</div>
+            <div>Registered Modules</div>
+        </div>
+    </div>
+
+    <h2>Execution Results Audit Log</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Target</th>
+                <th>Module</th>
+                <th>Status</th>
+                <th>Timestamp</th>
+                <th>Result Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows_html if rows_html else "<tr><td colspan='6'>No result records found in database.</td></tr>"}
+        </tbody>
+    </table>
+</body>
+</html>
+"""
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        return output_path
+
     def import_json(self, input_path: str):
         """Import data from JSON"""
         with open(input_path) as f:
@@ -979,7 +1041,6 @@ class Storage:
                 module = ModuleInfo(**module_data)
                 self.add_module(module)
 
-            # Results need to be associated with existing targets
             target_map = {t.target: t.id for t in self.get_all_targets()}
             for result_data in data.get('results', []):
                 if result_data['target_id'] in target_map.values():

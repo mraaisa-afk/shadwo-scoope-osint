@@ -4,6 +4,7 @@ Module Management Commands for SHADOWSCOPE CLI
 
 import asyncio
 import builtins
+import json
 
 import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -23,12 +24,8 @@ def list(
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)")
 ):
     """List all available modules"""
-    import json
-
-    # Discover modules
     modules.discover_modules()
 
-    # Get modules with filters
     if category:
         module_list = modules.get_modules_by_category(category)
     elif target_type:
@@ -72,8 +69,6 @@ def show(
     format: str = typer.Option("table", "--format", "-f", help="Output format (table, json)")
 ):
     """Show details for a specific module"""
-    import json
-
     module_metadata = modules.get_module(module)
 
     if not module_metadata:
@@ -189,9 +184,6 @@ def run(
     parallel: int = typer.Option(1, "--parallel", "-p", help="Number of parallel executions")
 ):
     """Run a module on one or more targets"""
-    import json
-
-    # Parse config
     config_dict = {}
     if config:
         try:
@@ -200,7 +192,6 @@ def run(
             console.print("[red]Invalid JSON for config[/red]")
             raise typer.Exit(1)
 
-    # Get targets to run on
     if targets_list:
         target_values = targets_list
     elif all_targets:
@@ -219,14 +210,10 @@ def run(
 
     console.print(f"[blue]#[/blue] Running module '{module}' on {len(target_values)} targets")
 
-    # Run module
     async def run_module():
         results = []
 
         if parallel > 1:
-            # Run in parallel batches
-            import asyncio
-
             semaphore = asyncio.Semaphore(parallel)
 
             async def run_single(target):
@@ -238,29 +225,23 @@ def run(
             tasks = [run_single(t) for t in target_values]
             results = await asyncio.gather(*tasks)
         else:
-            # Run sequentially
             for target in target_values:
                 result = await modules.executor.execute(
                     module, target, config=config_dict, timeout=timeout, no_sandbox=no_sandbox
                 )
                 results.append(result)
-
-                # Print progress
                 console.print(f"  [green]+[/green] Completed: {target}")
 
         return results
 
-    # Execute async
     results = asyncio.run(run_module())
 
-    # Display results
     success_count = sum(1 for r in results if r.status == "success")
     failure_count = sum(1 for r in results if r.status == "failed")
     partial_count = sum(1 for r in results if r.status == "partial")
 
     console.print(f"\n[green]+[/green] Completed: {success_count} success, {failure_count} failed, {partial_count} partial")
 
-    # Show failures
     if failure_count > 0:
         console.print("\n[red]Failures:[/red]")
         for result in results:
@@ -273,16 +254,15 @@ def chain(
     modules_list: builtins.list[str],
     targets_list: builtins.list[str] | None = typer.Argument(None, help="Target(s) to run the chain on"),
     all_targets: bool = typer.Option(False, "--all", "-a", help="Run on all targets in scope"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Chain configuration as JSON")
+    config: str | None = typer.Option(None, "--config", "-c", help="Chain configuration as JSON"),
+    parallel: int = typer.Option(1, "--parallel", "-p", help="Number of parallel executions across targets"),
+    no_sandbox: bool = typer.Option(False, "--no-sandbox", help="Disable sandboxing for chained runs")
 ):
-    """Run multiple modules in sequence (chaining)"""
-    import json
-
+    """Run multiple modules in sequence (chaining) with optional parallel target execution"""
     if not modules_list:
         console.print("[red]No modules specified for chaining[/red]")
         raise typer.Exit(1)
 
-    # Parse config
     config_dict = {}
     if config:
         try:
@@ -291,7 +271,6 @@ def chain(
             console.print("[red]Invalid JSON for config[/red]")
             raise typer.Exit(1)
 
-    # Get targets
     if targets_list:
         target_values = targets_list
     elif all_targets:
@@ -304,33 +283,41 @@ def chain(
         console.print("[yellow]No targets match the specified criteria[/yellow]")
         return
 
-    console.print(f"[blue]#[/blue] Running module chain on {len(target_values)} targets")
+    console.print(f"[blue]#[/blue] Running module chain on {len(target_values)} targets (Parallelism: {parallel})")
 
-    # Run chain
     async def run_chain():
         all_results = {}
 
         for module_name in modules_list:
-            console.print(f"\n[blue]#[/blue] Running module: {module_name}")
+            console.print(f"\n[blue]#[/blue] Running module in chain: {module_name}")
 
-            module_results = []
+            if parallel > 1:
+                semaphore = asyncio.Semaphore(parallel)
 
-            for target in target_values:
-                result = await modules.executor.execute(
-                    module_name, target, config=config_dict
-                )
-                module_results.append(result)
-                console.print(f"  [green]+[/green] Completed: {target}")
+                async def run_single(target):
+                    async with semaphore:
+                        return await modules.executor.execute(
+                            module_name, target, config=config_dict, no_sandbox=no_sandbox
+                        )
+
+                tasks = [run_single(t) for t in target_values]
+                module_results = await asyncio.gather(*tasks)
+            else:
+                module_results = []
+                for target in target_values:
+                    result = await modules.executor.execute(
+                        module_name, target, config=config_dict, no_sandbox=no_sandbox
+                    )
+                    module_results.append(result)
+                    console.print(f"  [green]+[/green] Completed: {target}")
 
             all_results[module_name] = module_results
 
         return all_results
 
-    # Execute async
     results = asyncio.run(run_chain())
 
-    # Display summary
-    console.print("\n[green]+[/green] Chain completed")
+    console.print("\n[green]+[/green] Chain execution completed")
 
     for module_name, module_results in results.items():
         success_count = sum(1 for r in module_results if r.status == "success")
@@ -341,15 +328,13 @@ def chain(
 @app.command()
 def categories():
     """List all available module categories"""
-    # Discover modules
     modules.discover_modules()
 
-    # Get all categories
-    categories = set()
+    categories_set = set()
     for module in modules.list_modules(show_disabled=True):
-        categories.add(module.category)
+        categories_set.add(module.category)
 
-    if not categories:
+    if not categories_set:
         console.print("[yellow]No module categories found[/yellow]")
         return
 
@@ -357,12 +342,12 @@ def categories():
     table.add_column("Category", style="cyan")
     table.add_column("Module Count", style="green")
 
-    for category in sorted(categories):
-        count = len(modules.get_modules_by_category(category))
-        table.add_row(category, str(count))
+    for category_item in sorted(categories_set):
+        count = len(modules.get_modules_by_category(category_item))
+        table.add_row(category_item, str(count))
 
     console.print(table)
-    console.print(f"[dim]Total categories: {len(categories)}[/dim]")
+    console.print(f"[dim]Total categories: {len(categories_set)}[/dim]")
 
 
 @app.command()
@@ -376,17 +361,14 @@ def discover():
         console=console
     ) as progress:
 
-        # Local modules
         task = progress.add_task("Discovering local modules...", total=None)
         local_modules = modules._discover_local_modules()
         progress.update(task, description=f"Found {len(local_modules)} local modules")
 
-        # Package modules
         task = progress.add_task("Discovering package modules...", total=None)
         package_modules = modules._discover_package_modules()
         progress.update(task, description=f"Found {len(package_modules)} package modules")
 
-        # Registry modules
         task = progress.add_task("Discovering registry modules...", total=None)
         registry_modules = modules._discover_registry_modules()
         progress.update(task, description=f"Found {len(registry_modules)} registry modules")
@@ -398,14 +380,12 @@ def discover():
 @app.command()
 def stats():
     """Show module usage statistics"""
-    # Get all results from storage
     all_results = storage.get_results_by_module("")
 
     if not all_results:
         console.print("[yellow]No module execution statistics available[/yellow]")
         return
 
-    # Count by module
     module_stats = {}
     for result in all_results:
         module_name = result.module
@@ -423,14 +403,14 @@ def stats():
     table.add_column("Partial", style="yellow")
     table.add_column("Success Rate", style="white")
 
-    for module_name, stats in sorted(module_stats.items(), key=lambda x: (-x[1]["total"], x[0])):
-        success_rate = (stats["success"] / stats["total"]) * 100 if stats["total"] > 0 else 0
+    for module_name, stats_item in sorted(module_stats.items(), key=lambda x: (-x[1]["total"], x[0])):
+        success_rate = (stats_item["success"] / stats_item["total"]) * 100 if stats_item["total"] > 0 else 0
         table.add_row(
             module_name,
-            str(stats["total"]),
-            str(stats["success"]),
-            str(stats["failed"]),
-            str(stats["partial"]),
+            str(stats_item["total"]),
+            str(stats_item["success"]),
+            str(stats_item["failed"]),
+            str(stats_item["partial"]),
             f"{success_rate:.1f}%"
         )
 
