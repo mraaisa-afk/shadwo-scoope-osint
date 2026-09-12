@@ -17,7 +17,8 @@ import hashlib
 import base64
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
+from enum import Enum
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
@@ -30,17 +31,73 @@ import requests
 console = Console()
 
 
-@dataclass
+@dataclass(init=False)
 class ModuleResult:
-    """Result from module execution"""
+    """Result from module execution.
+
+    Accepts the legacy ``start_time``/``end_time`` keyword aliases (used
+    by older modules) and normalizes them onto ``started_at`` /
+    ``completed_at``. ``datetime`` values are converted to ISO strings.
+    """
     target: str
     module: str
     data: Dict[str, Any]
     status: str = "success"  # success, failed, partial
     error: Optional[str] = None
-    started_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    completed_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    
+    started_at: str = ""
+    completed_at: str = ""
+
+    def __init__(
+        self,
+        target: str,
+        module: str,
+        data: Optional[Dict[str, Any]] = None,
+        status: str = "success",
+        error: Optional[str] = None,
+        started_at: Any = None,
+        completed_at: Any = None,
+        start_time: Any = None,  # legacy alias of started_at
+        end_time: Any = None,  # legacy alias of completed_at
+    ) -> None:
+        self.target = target
+        self.module = module
+        if data is None:
+            data = {}
+        self.data = data if isinstance(data, dict) else {"result": data}
+        self.status = status
+        self.error = error
+        now = datetime.now().isoformat()
+        self.started_at = self._as_iso(start_time if start_time is not None
+                                        else started_at) or now
+        self.completed_at = self._as_iso(end_time if end_time is not None
+                                          else completed_at) or now
+
+    @staticmethod
+    def _as_iso(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value)
+
+    @property
+    def start_time(self) -> str:
+        """Legacy alias for :attr:`started_at` (read/write)."""
+        return self.started_at
+
+    @start_time.setter
+    def start_time(self, value: Any) -> None:
+        self.started_at = self._as_iso(value)
+
+    @property
+    def end_time(self) -> str:
+        """Legacy alias for :attr:`completed_at` (read/write)."""
+        return self.completed_at
+
+    @end_time.setter
+    def end_time(self, value: Any) -> None:
+        self.completed_at = self._as_iso(value)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "target": self.target,
@@ -50,6 +107,132 @@ class ModuleResult:
             "error": self.error,
             "started_at": self.started_at,
             "completed_at": self.completed_at
+        }
+
+
+class ModuleConfig:
+    """Base configuration for all SHADOWSCOPE modules.
+
+    Every module ships its own ``@dataclass`` config (e.g.
+    ``DNSBruteConfig``) inheriting from this class. The base deliberately
+    stays a plain (non-dataclass) class so subclass field ordering can
+    never break, while still providing dict conversion helpers and
+    framework-wide defaults.
+    """
+
+    #: Framework-wide defaults. Subclasses may override any of these.
+    timeout: int = 300
+    max_retries: int = 3
+    verify_ssl: bool = True
+    user_agent: Optional[str] = None
+    proxy: Optional[str] = None
+    cache_enabled: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize this config to a plain dict."""
+        if is_dataclass(self):
+            return {f.name: getattr(self, f.name) for f in fields(self)}
+        return dict(vars(self))
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]] = None) -> "ModuleConfig":
+        """Build a config from a plain dict, ignoring unknown keys."""
+        data = data or {}
+        if is_dataclass(cls):
+            known = {f.name for f in fields(cls)}
+            kwargs = {k: v for k, v in data.items() if k in known}
+            try:
+                return cls(**kwargs)  # type: ignore[call-arg]
+            except TypeError:
+                pass
+        try:
+            instance = cls()  # type: ignore[call-arg]
+        except TypeError:
+            instance = cls.__new__(cls)
+        for key, value in data.items():
+            if not hasattr(instance, key):
+                continue
+            if callable(getattr(instance, key)):
+                continue
+            try:
+                setattr(instance, key, value)
+            except (AttributeError, TypeError):
+                continue
+        return instance
+
+
+class BaseModule:
+    """Base class for every SHADOWSCOPE module.
+
+    Concrete modules declare ``MODULE_*`` class attributes, accept an
+    optional config object in ``__init__`` and implement
+    ``async execute(target, options)``. :meth:`run` adapts that to the
+    executor interface, and :meth:`get_metadata` exposes the declaration
+    to discovery, the CLI and storage.
+    """
+
+    MODULE_NAME: str = "base"
+    MODULE_VERSION: str = "1.0"
+    MODULE_AUTHOR: str = "SHADOWSCOPE"
+    MODULE_CATEGORY: str = "recon"
+    MODULE_DESCRIPTION: str = ""
+    MODULE_TARGET_TYPES: List[Any] = []
+    MODULE_DEPENDENCIES: List[str] = []
+    MODULE_TIMEOUT: int = 300
+
+    def __init__(self, config: Optional[Any] = None) -> None:
+        self.config = config if config is not None else ModuleConfig()
+        self.console = Console()
+
+    # -- lifecycle hooks -------------------------------------------------
+    async def initialize(self) -> None:
+        """Prepare resources (sessions, wordlists). Optional override."""
+        return None
+
+    async def cleanup(self) -> None:
+        """Release resources. Optional override."""
+        return None
+
+    # -- executor interface ----------------------------------------------
+    async def run(self, target: str, options: Optional[Dict[str, Any]] = None) -> Any:
+        """Entry point used by :class:`ModuleExecutor`.
+
+        Delegates to :meth:`execute`, which is what concrete modules
+        implement. Modules may also override :meth:`run` directly.
+        """
+        executor = getattr(self, "execute", None)
+        if callable(executor):
+            return await executor(target, options or {})
+        raise NotImplementedError(
+            f"{self.__class__.__name__} implements neither run() nor execute()"
+        )
+
+    def validate_target(self, target: str) -> bool:
+        """Return True when *target* is acceptable. Modules override this."""
+        return bool(target and target.strip())
+
+    @classmethod
+    def get_metadata(cls) -> Dict[str, Any]:
+        """Return JSON-serializable metadata for discovery/CLI/storage."""
+        target_types: List[str] = []
+        for item in getattr(cls, "MODULE_TARGET_TYPES", []) or []:
+            if isinstance(item, Enum):
+                target_types.append(str(item.value))
+            else:
+                target_types.append(str(item))
+        return {
+            "name": getattr(cls, "MODULE_NAME", cls.__name__),
+            "version": getattr(cls, "MODULE_VERSION", "1.0"),
+            "author": getattr(cls, "MODULE_AUTHOR", ""),
+            "description": getattr(cls, "MODULE_DESCRIPTION", ""),
+            "category": getattr(cls, "MODULE_CATEGORY", "recon"),
+            "target_types": target_types,
+            "dependencies": list(getattr(cls, "MODULE_DEPENDENCIES", []) or []),
+            "config_schema": {},
+            "enabled": True,
+            "is_async": True,
+            "is_sandboxed": True,
+            "timeout": int(getattr(cls, "MODULE_TIMEOUT", 300) or 300),
         }
 
 
@@ -163,16 +346,44 @@ class ModuleLoader:
                 sys.path.remove(str(module_path.parent))
     
     def load_module_from_package(self, module_name: str) -> Optional[Type]:
-        """Load a module from installed Python package"""
+        """Load a module from installed Python package.
+
+        Built-in modules live in category subpackages
+        (``shadowscope.modules.<category>.<name>``), so after the direct
+        import attempt we scan every category directory for a match.
+        """
+        if module_name in self._loaded_modules:
+            return self._loaded_modules[module_name]
         try:
-            # Try to import as Python package
+            # Try a direct submodule import first (flat layout / tests).
             module = importlib.import_module(f"shadowscope.modules.{module_name}")
-            self._loaded_modules[module_name] = module
-            console.print(f"[green]+[/green] Loaded package module: {module_name}")
-            return module
-        except ImportError as e:
+            if not hasattr(module, "__path__"):
+                self._loaded_modules[module_name] = module
+                console.print(f"[green]+[/green] Loaded package module: {module_name}")
+                return module
+        except ImportError:
+            pass
+        try:
+            package = importlib.import_module("shadowscope.modules")
+            package_dir = Path(str(package.__file__)).parent
+            for category_dir in sorted(package_dir.iterdir()):
+                if not category_dir.is_dir() or category_dir.name.startswith(("_", ".")):
+                    continue
+                if not (category_dir / f"{module_name}.py").exists():
+                    continue
+                full_name = f"shadowscope.modules.{category_dir.name}.{module_name}"
+                try:
+                    module = importlib.import_module(full_name)
+                except ImportError:
+                    continue
+                self._loaded_modules[module_name] = module
+                console.print(f"[green]+[/green] Loaded package module: {module_name}")
+                return module
+        except Exception as e:
             console.print(f"[yellow]Module {module_name} not found as package: {e}[/yellow]")
             return None
+        console.print(f"[yellow]Module {module_name} not found as package[/yellow]")
+        return None
     
     def load_module(self, module_name: str) -> Optional[Type]:
         """Try to load a module from any available source"""
@@ -331,11 +542,15 @@ class ModuleExecutor:
                 error=f"No valid module class found in {module_name}"
             )
         
-        # Determine timeout
-        module_timeout = timeout or module_info.timeout or self.config.sandbox.timeout
-        
+        # Determine timeout (ModuleInfo predates per-module overrides,
+        # so fall back gracefully when the attributes are absent).
+        module_timeout = (timeout
+                          or getattr(module_info, "timeout", None)
+                          or self.config.sandbox.timeout)
+
         # Check if module should be sandboxed
-        should_sandbox = module_info.is_sandboxed and self.config.sandbox.enabled
+        should_sandbox = (getattr(module_info, "is_sandboxed", True)
+                          and self.config.sandbox.enabled)
         
         try:
             if should_sandbox:
@@ -381,12 +596,26 @@ class ModuleExecutor:
             )
     
     def _get_module_class(self, module) -> Optional[Type]:
-        """Find the module class in a module"""
-        # Look for common class names
+        """Find the module class in a module.
+
+        Only classes actually *defined* in the module file qualify. This
+        keeps helper/base classes imported from elsewhere (e.g.
+        ``BaseModule`` itself) from shadowing the real module class,
+        while remaining compatible with duck-typed test modules.
+        """
+        owner = getattr(module, "__name__", None)
         for attr in dir(module):
-            obj = getattr(module, attr)
-            if inspect.isclass(obj) and self._is_module_class(obj):
-                return obj
+            try:
+                obj = getattr(module, attr)
+            except Exception:
+                continue
+            if not (inspect.isclass(obj) and self._is_module_class(obj)):
+                continue
+            if obj is BaseModule:
+                continue
+            if owner and getattr(obj, "__module__", None) not in (None, owner):
+                continue
+            return obj
         return None
     
     def _is_module_class(self, cls: Type) -> bool:
@@ -395,27 +624,45 @@ class ModuleExecutor:
         required_methods = ['run', 'get_metadata']
         return all(hasattr(cls, method) for method in required_methods)
     
-    async def _execute_direct(self, module_class: Type, target: str, 
-                              config: Optional[Dict[str, Any]], 
+    async def _execute_direct(self, module_class: Type, target: str,
+                              config: Optional[Dict[str, Any]],
                               timeout: int) -> ModuleResult:
         """Execute module directly (not sandboxed)"""
         try:
-            # Create instance
-            instance = module_class(config=config)
-            
+            # Built-in modules construct with zero args and own a dataclass
+            # config; dict-style overrides (e.g. from `--config '{...}'`)
+            # are overlaid onto known fields only.
+            instance = module_class()
+            if config and isinstance(config, dict):
+                module_config = getattr(instance, "config", None)
+                if is_dataclass(module_config):
+                    known = {f.name for f in fields(module_config)}
+                    for key, value in config.items():
+                        if key in known:
+                            try:
+                                setattr(module_config, key, value)
+                            except (AttributeError, TypeError):
+                                continue
+
             # Execute with timeout
-            result = await asyncio.wait_for(
+            raw = await asyncio.wait_for(
                 instance.run(target),
                 timeout=timeout
             )
-            
+
+            # Modules may return a ModuleResult directly or a plain dict.
+            if isinstance(raw, ModuleResult):
+                if raw.status == "error":
+                    raw.status = "failed"  # normalize legacy status
+                return raw
+            data = raw if isinstance(raw, dict) else {"result": raw}
             return ModuleResult(
                 target=target,
                 module=instance.__class__.__name__,
-                data=result,
+                data=data,
                 status="success"
             )
-            
+
         except asyncio.TimeoutError:
             raise
         except Exception as e:
@@ -556,35 +803,53 @@ class ModuleManager:
         return modules
     
     def _discover_package_modules(self) -> Dict[str, ModuleMetadata]:
-        """Discover modules in Python packages"""
+        """Discover modules in Python packages.
+
+        Built-in modules live in category subpackages
+        (``shadowscope.modules.<category>/<name>.py``). Every module file
+        is imported and its metadata read from the module class, so
+        ``module list`` always reflects the real codebase.
+        """
         modules = {}
-        
-        # List all modules in shadowscope.modules package
+
         try:
             modules_package = importlib.import_module("shadowscope.modules")
-            modules_dir = Path(modules_package.__file__).parent
-            
-            for item in modules_dir.iterdir():
-                if item.is_dir() and not item.name.startswith('_'):
-                    manifest_path = item / "manifest.yaml"
-                    if manifest_path.exists():
-                        try:
-                            with open(manifest_path, 'r') as f:
-                                manifest = yaml.safe_load(f)
-                            
-                            metadata = ModuleMetadata.from_dict(manifest)
-                            modules[metadata.name] = metadata
-                        except Exception as e:
-                            console.print(f"[yellow]Error loading manifest for {item.name}: {e}[/yellow]")
-                    else:
-                        # Try to infer metadata from module
-                        module_name = item.name
-                        metadata = self._infer_metadata_from_module(module_name)
-                        if metadata:
-                            modules[module_name] = metadata
+            modules_dir = Path(str(modules_package.__file__)).parent
+
+            for category_dir in sorted(modules_dir.iterdir()):
+                if not category_dir.is_dir() or category_dir.name.startswith(("_", ".")):
+                    continue
+                for module_file in sorted(category_dir.glob("*.py")):
+                    if module_file.name.startswith("_"):
+                        continue
+                    full_name = f"shadowscope.modules.{category_dir.name}.{module_file.stem}"
+                    try:
+                        module = importlib.import_module(full_name)
+                    except Exception as e:
+                        console.print(f"[yellow]Could not import {full_name}: {e}[/yellow]")
+                        continue
+                    module_class = self.executor._get_module_class(module)
+                    if not module_class:
+                        continue
+                    try:
+                        meta = module_class.get_metadata()
+                        if isinstance(meta, ModuleMetadata):
+                            metadata = meta
+                        else:
+                            metadata = ModuleMetadata.from_dict(dict(meta))
+                    except Exception:
+                        metadata = ModuleMetadata(
+                            name=module_file.stem,
+                            description=(module.__doc__ or "").strip().splitlines()[0]
+                            if (module.__doc__ or "").strip() else "",
+                            category=category_dir.name,
+                            target_types=[],
+                            version="1.0"
+                        )
+                    modules[metadata.name] = metadata
         except Exception as e:
             console.print(f"[yellow]Error discovering package modules: {e}[/yellow]")
-        
+
         return modules
     
     def _infer_metadata_from_module(self, module_name: str) -> Optional[ModuleMetadata]:
